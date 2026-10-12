@@ -1,0 +1,159 @@
+diff --git a/h5v2/base.css b/h5v2/base.css
+index 6d0f5ca..f559b5f 100644
+--- a/h5v2/base.css
++++ b/h5v2/base.css
+@@ -168,6 +168,7 @@ dialog:focus-visible { outline: none; }
+ /* 首页态：占屏约 40%，底部渐隐以便问候语压在上层仍可读 */
+ .figure {
+   position: relative;
++  isolation: isolate;      /* 建层叠上下文，::before 的 z-index:-1 光晕才落在形象之后而非页面背景后 */
+   width: 100%;
+   height: var(--figure-hero);
+   display: grid; place-items: end center;
+@@ -736,7 +737,7 @@ dialog:focus-visible { outline: none; }
+ .btn--gradient { background: var(--grad-brand); color: var(--on-brand); box-shadow: var(--sh-brand); }
+ .btn--ghost { background: var(--surface); color: var(--brand); box-shadow: var(--sh-btn); }
+ .btn--quiet { background: var(--brand-soft); color: var(--brand); }
+-.btn--danger { background: var(--danger); color: #FFFFFF; }
++.btn--danger { background: var(--danger); color: var(--on-brand); }
+ .btn--block { display: flex; width: 100%; }
+ .btn--sm { min-height: var(--h-pill); padding-inline: var(--sp-md); font-size: var(--text-xs); }
+ 
+@@ -889,6 +890,25 @@ dialog.sheet::backdrop { background: var(--overlay); }
+     z-index: -1;              /* 遮罩压在弹层之下 */
+   }
+   dialog.sheet[open] > * { position: relative; }   /* 内容抬到遮罩之上 */
++  /* .modal 变体同口径兜底 —— 上面只覆盖了 .sheet，居中的二维码/登录弹层
++     在老内核下会落入文档流（无遮罩、不居中）。inset:0 + height:fit-content
++     配 dialog.modal 已有的 margin:auto 即可居中；shortcut: 依赖 fit-content，
++     升级到需支持 Chrome<46 时改 top/left 50% 方案。 */
++  dialog.modal[open] {
++    position: fixed;
++    inset: 0;
++    height: fit-content;
++    z-index: var(--z-modal);
++    display: block;
++  }
++  dialog.modal[open]::before {
++    content: '';
++    position: fixed;
++    inset: 0;
++    background: var(--overlay);
++    z-index: -1;
++  }
++  dialog.modal[open] > * { position: relative; }
+ }
+ dialog.sheet h2 { font-size: var(--text-md); }
+ dialog.sheet p { margin-top: var(--sp-xs); font-size: var(--text-base); color: var(--ink-2); }
+@@ -902,7 +922,8 @@ dialog.sheet .cluster .btn { flex: 1 1 0; }
+    两者共用同一套背板、圆角、阴影令牌，不新增颜色尺寸。 */
+ dialog.modal {
+   /* position: relative —— 弹层内的绝对定位元素（如 .toast）要拿它当包含块。
+-     原生 dialog 默认 static，不写这条，里面的 absolute 会以页面为参照。 */
++     原生 dialog 开启时是 fixed、关闭时是 absolute，都不是 static；
++     不写这条，里面的 absolute 会以视口/初始包含块为参照。 */
+   position: relative;
+   width: calc(100% - var(--sp-xl) * 2);
+   max-width: var(--measure);
+@@ -972,7 +993,7 @@ dialog.modal .cluster .btn { flex: 1 1 0; }
+ .field__help { margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--ink-3); }
+ .field__error {
+   margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--danger);
+-  min-height: 1lh;   /* 错误容器不塌陷，出现时不跳版 */
++  min-height: 1.7em;   /* 错误容器不塌陷，出现时不跳版；1lh 老内核不支持，用 em 兜底 */
+ }
+ 
+ /* ==========================================================================
+diff --git a/h5v2/index.html b/h5v2/index.html
+index b3d856f..3e2b7a4 100644
+--- a/h5v2/index.html
++++ b/h5v2/index.html
+@@ -83,9 +83,7 @@ body { background: #E9E8F2; }
+ .toprow { display: flex; justify-content: flex-end; padding: var(--sp-md) var(--pad-end) 0; }
+ .listening { display: flex; align-items: center; gap: var(--sp-sm);
+              padding: var(--sp-md) var(--pad-end) 0 var(--pad-start); }
+-.bar__title { flex: 1 1 auto; min-width: 0; }
+-.bar__title h1 { font-size: var(--text-md); }
+-.flowpad { padding-inline: var(--pad-end) var(--pad-start); }
++.bar__title { flex: 1 1 auto; min-width: 0; font-size: var(--text-md); font-weight: var(--w-head); }
+ 
+ /* 检查清单 */
+ .checklist { background: var(--surface); border-radius: var(--r-card); padding: var(--sp-lg);
+@@ -125,8 +123,8 @@ body { background: #E9E8F2; }
+         <div class="tok__name">按下态 brand-deep</div><div class="tok__val">--brand-deep #443DD6</div></div>
+       <div class="tok"><div class="tok__chip" style="background:#1E1B33"></div>
+         <div class="tok__name">主文字 ink</div><div class="tok__val">--ink #1E1B33</div></div>
+-      <div class="tok"><div class="tok__chip" style="background:#7A76A0"></div>
+-        <div class="tok__name">说明文字 ink-3</div><div class="tok__val">--ink-3 #7A76A0</div></div>
++      <div class="tok"><div class="tok__chip" style="background:#6A668F"></div>
++        <div class="tok__name">说明文字 ink-3</div><div class="tok__val">--ink-3 #6A668F</div></div>
+       <div class="tok"><div class="tok__chip" style="background:#E4E2F5"></div>
+         <div class="tok__name">分隔线 line</div><div class="tok__val">--line #E4E2F5</div></div>
+       <div class="tok"><div class="tok__chip" style="background:#D93A34"></div>
+@@ -366,7 +364,7 @@ body { background: #E9E8F2; }
+               <span class="figure figure--dock">
+                 <img class="figure__img" src="assets/avatars/avatar-02.png" alt="" width="44" height="44">
+               </span>
+-              <span class="bar__title"><h1>社科数据助手</h1></span>
++              <span class="bar__title">社科数据助手</span>
+               <button class="pill">
+                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                   <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
+@@ -723,6 +721,8 @@ body { background: #E9E8F2; }
+     /* 左：切模式。切走时把录音态收干净，避免留下一个"录着"的按钮 */
+     modeBtn.addEventListener('click', function () {
+       if (timer) { clearTimeout(timer); timer = null; }
++      if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
++      busy = false;
+       rec = 'off';
+       mode = (mode === 'voice') ? 'keyboard' : 'voice';
+       render();
+diff --git a/h5v2/tokens.css b/h5v2/tokens.css
+index 58d8caf..4154850 100644
+--- a/h5v2/tokens.css
++++ b/h5v2/tokens.css
+@@ -38,7 +38,7 @@
+ 
+   --ink:          #1E1B33;   /* 主文字 */
+   --ink-2:        #4A4666;   /* 次级文字 */
+-  --ink-3:        #7A76A0;   /* 说明 / 时间 / 合规行 */
++  --ink-3:        #6A668F;   /* 说明 / 时间 / 合规行 */
+   --ink-on-dark:  #ECEBF5;   /* 深底上的文字 */
+ 
+   --line:         var(--mist-4);
+@@ -130,8 +130,8 @@
+   --sp-2xl: 48px;
+   --sp-3xl: 64px;
+   /* 段落间距：工信部适老化规范要求段落间距 ≥ 行距 ×1.3。
+-     正文 16 × 1.7 = 27.2px，×1.3 = 35.4px，取 36px。 */
+-  --sp-para: 36px;
++     用 calc 跟行距走，字号档位放大时仍满足（1rem 档位下 ≈35.4px）。 */
++  --sp-para: calc(1.3 * 1rem * var(--lh-body));
+ 
+   /* ------------------------------------------------------------------ *
+    * 8 · 尺度与盒模型 —— H5 竖屏优先
+@@ -143,7 +143,7 @@
+   --pad-end:    max(var(--gutter), var(--safe-right));
+   --measure:    34em;                                  /* 中文正文行宽 ≈26–32 字 */
+   --h-tap:      44px;                                  /* 最小热区；靠 min-height 撑开 */
+-  --h-pill:     36px;                                  /* 胶囊 / 页头小图标钮：次级动作的高度 */
++  --h-pill:     36px;                                  /* 胶囊 / 页头小图标钮的可见形体高度；热区另由 ::before 撑到 --h-tap 44px */
+   --h-control:  44px;                                  /* 输入与按钮共用基准高 */
+   --h-input:    48px;
+   --h-tabbar:   56px;
+@@ -222,13 +222,13 @@
+     --ink-3:       #8C89A6;
+     --ink-on-dark: #ECEBF5;
+ 
+-    --line:        #2E2C40;
++    --line:        var(--mist-4);
+     --line-strong: #3D3A55;
+     --overlay:     rgba(8, 7, 14, 0.62);
+ 
+     --brand:       #8B84F2;
+     --brand-deep:  #7A72EC;
+-    --brand-soft:  #2A2743;
++    --brand-soft:  var(--mist-3);
+     --on-brand:    #14131F;   /* 深色下品牌色变浅，压在上面的文字必须翻深 */
+     --focus:       #A79CFA;
+ 

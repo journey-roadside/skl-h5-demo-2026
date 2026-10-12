@@ -1,0 +1,355 @@
+OpenCodeReview full-file scan (ocr scan)
+provider: deepseek deepseek-flash  status: success
+files_reviewed: 13  comments: 55  elapsed: 6m57s
+tokens: total 1140922 (in 982898, out 158024, cache_read 732672)
+session_id: fcd2927a-ae45-43b7-a974-19735e5f87de
+==============================================================================
+
+[1/55] h5v2/tokens.css:134-134  <medium/bug>
+The 36px is hard-coded from 16px × 1.7 × 1.3, which only holds at the 100% root size. The block at the bottom of this file raises the root font to 125%/145% via html[data-font-scale], so at xlarge the effective line-height becomes ~23.2 × 1.7 = 39.4px and the stated 适老化 rule (段落间距 ≥ 行距 × 1.3 ≈ 51px) is no longer satisfied. Because spacing was deliberately kept in px, this token silently drifts out of spec when the font-scale switch is used. Express it font-relative so it tracks the scaled line-height.
+--- suggestion ---
+  --sp-para: calc(1.3 * 1rem * var(--lh-body));
+
+[2/55] h5v2/tokens.css:0-0  <medium/bug>
+Per the size-comment rules, --ink-3 is used at --text-xs (13px) for 合规行/时间, i.e. small text. #7A76A0 on --mist-2 (#F5F4FD) yields only ~3.9:1 contrast, below WCAG AA's 4.5:1 threshold for small text. Either darken --ink-3 (e.g. #6A668F gives ~4.9:1) so it is legible at 13px, or restrict this token to non-essential decorative meta text.
+--- suggestion ---
+  --ink-3:         #6A668F;   /* 说明 / 时间 / 合规行 */
+
+[3/55] h5v2/tokens.css:146-146  <medium/bug>
+--h-pill (36px) is below the 44px minimum tap target declared by --h-tap, yet it is described as the height of tappable 胶囊/页头小图标钮. Touch targets smaller than 44×44px violate the WCAG 2.5.5 / 微信适老化 guidance. Either raise the pill height to 44px or guarantee a ≥44px hit area at the usage site.
+
+[4/55] h5v2/tokens.css:225-225  <low/maintainability>
+In the dark block --line re-declares the literal #2E2C40 (same as --mist-4) and --brand-soft re-declares #2A2743 (same as --mist-3), whereas the light-mode block correctly aliases them via var(). Hard-coded duplicates can silently diverge when the neutral scale is edited later. Reference the neutral tokens instead (var(--mist-4) / var(--mist-3) resolve within this same :root block).
+--- suggestion ---
+    --line:        var(--mist-4);
+
+[5/55] h5v2/tokens.css:246-246  <low/maintainability>
+Only --w-body is re-tuned for dark mode; --w-mid/--w-head/--w-strong are left untouched. On systems without a variable-weight font (the CJK system fonts listed above are static), 350 snaps to 400, so the intended de-weighting silently has no effect — and if it did apply, body would render lighter than mid/head, inverting the hierarchy. Consider driving weights through consistent tokens or documenting the variable-font requirement.
+
+[6/55] h5v2/base.css:904-906  <medium/bug>
+The rationale is incorrect and the override is risky. `dialog` already carries a UA `position: absolute` (and `dialog:modal { position: fixed }` when opened via `showModal()`), so it is already a containing block for absolutely-positioned descendants — `position: relative` is redundant. Worse, the element the comment cites (`.toast`) is `position: fixed`, and a `position: fixed` element is NOT anchored to a positioned ancestor (only `transform`/`filter`/`perspective`/`contain` create a containing block for it), so this rule achieves nothing for it. Meanwhile `dialog.modal` (author) wins over the UA `dialog:modal { position: fixed }`, so a modal dialog ends up `position: relative` — the UA's `inset-block: 0` + `margin: auto` centering no longer applies, which can leave the modal un-centered vertically. Recommend dropping the override (dialog is already positioned).
+--- suggestion ---
+  /* dialog 的 UA 样式本就把 <dialog> 定位为 absolute（:modal 时 fixed），
+     它已是绝对/固定定位后代的包含块；这里改成 relative 反而会盖掉
+     dialog:modal 的 position: fixed。position:fixed 的后代（.toast）也只认
+     transform/filter/contain，不认 positioned 祖先，本规则对其无效。 */
+
+[7/55] h5v2/base.css:169-171  <medium/bug>
+`.figure` is only `position: relative` and does not create a stacking context, so `.figure::before { z-index: -1 }` is resolved against the nearest ancestor stacking context. If `.figure` is ever placed inside a box with an opaque background (e.g. a `.card` / `.herocard`), the aura will be painted *behind* that background and disappear; it also risks being occluded by in-flow siblings. Make `.figure` establish its own stacking context so the aura stays scoped to it.
+--- suggestion ---
+.figure {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+
+[8/55] h5v2/base.css:975-975  <medium/maintainability>
+Both `min-height: 1lh` (error container anti-jump) and `min-height: 100dvh` (viewport fill, also `.docpage`) use modern CSS units unsupported by the older WeChat X5 / Chromium kernels this file explicitly targets. In those browsers the declarations are dropped entirely: the error-line reservation silently fails and the sticky/flex-column skeleton can collapse. Add an `em`-based fallback for `1lh` and a `100vh` fallback before `100dvh`.
+--- suggestion ---
+  min-height: 1.2em;   /* 旧内核不支持 lh，先用 em 兜底 */
+  min-height: 1lh;   /* 错误容器不塌陷，出现时不跳版 */
+
+[9/55] h5v2/base.css:739-739  <low/maintainability>
+Bare color literal `#FFFFFF` contradicts this design system's own rule ("不新增裸色值") and bypasses theming. Use the existing on-brand token so the danger button follows the same token pipeline as every other variant.
+--- suggestion ---
+.btn--danger { background: var(--danger); color: var(--on-brand); }
+
+[10/55] 500.html:65-65  <high/bug>
+The inline comment states a fallback (兜底) must be left for the reload action, but the implementation provides none: `<button>` is inert once JS is disabled or fails to run, so the only working action left is the secondary "回到首页" link, which is not equivalent to a retry. Make the primary action work without JS, e.g. use an anchor that navigates to the current URL (empty `href` reloads the page), or add a `<noscript>` fallback.
+--- suggestion ---
+    <!-- 用 <a href=""> 原生刷新：JS 禁用/失败时仍可用，无需脚本 -->
+    <a class="btn btn--primary" href="" id="retry">重新加载</a>
+
+[11/55] 500.html:75-75  <medium/maintainability>
+`document.getElementById('retry')` is dereferenced without a null check; if the markup is refactored (id removed/renamed) this throws and breaks the IIFE. Also note that both the inline `<script>` and the inline `<style>` will be silently blocked under a strict Content-Security-Policy, disabling the retry behavior. Guard the lookup and consider moving the script to an external file (or adopting a nonce/hash) for CSP compatibility.
+--- suggestion ---
+  var retry = document.getElementById('retry');
+  if (retry) {
+    retry.addEventListener('click', function () {
+      location.reload();
+    });
+  }
+
+[12/55] 500.html:7-8  <medium/maintainability>
+An error page that depends on externally served stylesheets (`./h5v2/tokens.css`, `./h5v2/base.css`) will render completely unstyled whenever the outage also affects static-asset delivery — exactly the failure scenario this page is meant to handle. Consider inlining the minimal critical styles needed for this single status layout so the 500 page stays usable/legible even with broken asset serving.
+
+[13/55] account.html:201-202  <high/bug>
+Missing session guard. `Auth.get()` returns `null` for an unauthenticated (non-WeChat) visitor, and the code silently falls back to `{}`. The page then renders a normal-looking account view with a placeholder phone (`—`) and a working “退出登录” button instead of redirecting to login. Per the project pattern (`Auth.require` / `Auth.isLoggedIn`) the account page should gate on a session. Consider redirecting (or invoking the login layer) when `!isWx && !Auth.isLoggedIn()`. Prompt the user to log in instead of showing a hollow account state.
+--- suggestion ---
+  var isWx = Auth.isWeChat();
+  var user = Auth.get();
+  /* 非微信且未登录：本页无可展示的账户信息，回到首页触发登录流程 */
+  if (!isWx && !user) { location.replace('./index.html'); return; }
+  user = user || {};
+
+[14/55] account.html:195-198  <medium/bug>
+`maskPhone` boundary bug. For a length-8 input, `new Array(8 - 7).join('*')` is `''`, so the function returns `slice(0,4) + '' + slice(-4)` — i.e. the FULL 8 digits unmasked. Likewise any input shorter than 8 is returned verbatim. For a masking helper, failing to mask is a PII-leak risk; it should degrade to a fixed mask (or at least never echo the raw value) for malformed/short inputs.
+--- suggestion ---
+  function maskPhone(p) {
+    if (typeof p !== 'string' || p.length < 8) return '—';
+    var stars = Math.max(1, p.length - 8);
+    return p.slice(0, 4) + new Array(stars + 1).join('*') + p.slice(-4);
+  }
+
+[15/55] account.html:211-212  <low/security>
+`user.avatar` comes from persisted auth data (localStorage) and is assigned to `img.src` without any validation. If that value is ever attacker-influenced it can point at an external origin, causing the page to load an arbitrary remote image (referrer/tracking leak) or a `data:`/`javascript:`-style payload. Constrain the URL (e.g. only allow `https:`/same-origin, or a known CDN prefix) before assigning it, and fall back to the built-in glyph on rejection.
+--- suggestion ---
+      if (/^https?:\/\//i.test(user.avatar)) {
+        img.src = user.avatar;
+        img.hidden = false;
+        document.querySelector('[data-wx-avatar-fallback]').setAttribute('hidden', '');
+      }
+
+[16/55] account.html:235-236  <low/maintainability>
+The non-`showModal` fallback (`setAttribute('open','')`) is not a modal dialog: it has no backdrop and, critically, cannot be dismissed with Esc (the native `cancel`/Escape behavior only applies to modal dialogs). On fallback browsers the confirmation can only be closed via the two buttons and may sit unstyled over the page. Consider also wiring an Escape/backdrop handler in the fallback path for parity.
+
+[17/55] 404.html:7-7  <high/bug>
+`404.html` is a catch-all page: the server keeps the original request URL (e.g. `/foo/bar`) while serving this file, so relative references are resolved against the *requested* path, not the site root. On nested URLs `./h5v2/tokens.css` and `./h5v2/base.css` resolve to `/foo/bar/h5v2/...`, which 404s and leaves the error page completely unstyled. Unlike the other root-level pages (always served at `/`), a 404 page must not depend on the current URL's depth. Use root-absolute asset paths (or have the server/deploy rewrite to an absolute base).
+--- suggestion ---
+<link rel="stylesheet" href="/h5v2/tokens.css">
+
+[18/55] 404.html:67-67  <high/bug>
+Same relative-path problem for the primary action: on a nested 404 URL this resolves to e.g. `/foo/bar/index.html`, which is also missing, so the "回到首页" button leads to another 404. Point it at the site root (root-absolute), or ensure the deploy rewrites the base.
+--- suggestion ---
+<a class="btn btn--primary" href="/index.html">回到首页</a>
+
+[19/55] phone.html:78-79  <high/security>
+Hardcoded demo credentials are duplicated here from auth.js. auth.js explicitly documents that DEMO_PHONE/DEMO_CODE must live ONLY inside auth.js and NOT be written into any page (see its §演示账号 comment) — this page breaks that rule and re-introduces a second source of truth. Any change to the demo account/code must now be kept in sync in two files, and the credentials become trivially readable from the page. Expose a dedicated Auth API (e.g. Auth.changePhone / Auth.verifyDemo) and drop the local constants.
+
+[20/55] phone.html:184-186  <high/maintainability>
+This bypasses the Auth abstraction: it hardcodes the private storage key 'skl.user' (defined only inside auth.js as KEY) and calls localStorage directly instead of going through Auth. If the key or the stored user shape changes in auth.js, this write silently desyncs from Auth.get(). The try/catch also swallows failures, so the UI reports success while nothing persisted. Please add and use an Auth setter (e.g. Auth.set / Auth.update) and surface persistence errors.
+
+[21/55] phone.html:145-146  <medium/bug>
+stopCountdown() is invoked before any validation, so a failed save unconditionally clears an in-flight resend countdown and re-enables the "获取验证码" button. This defeats the 60s resend throttle (the user can immediately request a new code) and also mutates UI state on a path that had nothing to do with the timer. Stop the countdown only on the successful path (it is already called there).
+--- suggestion ---
+  document.getElementById('ph-save').addEventListener('click', function () {
+
+[22/55] phone.html:200-200  <medium/bug>
+There is no in-flight/submitting guard on the save button, and the Enter shortcut re-invokes .click(). Rapid double clicks (or clicking then pressing Enter) will run the handler multiple times: duplicate toasts, multiple localStorage writes, and multiple setTimeout redirects. Add a `submitting` flag (and/or disable ph-save) that is set at the start and checked on entry.
+
+[23/55] phone.html:131-137  <medium/maintainability>
+The phone validation (format check + same-number check) is copy-pasted between the send and save handlers. Any future rule change must be applied in two places and can drift; extract a single validatePhone(value) helper returning an error message (or null) and reuse it in both handlers.
+
+[24/55] phone.html:176-177  <low/bug>
+Logic dead-end: the only phone accepted by auth.js is DEMO_PHONE, so a phone-logged-in user always has current phone === DEMO_PHONE. The same-number check above rejects new === current, while this check rejects new !== DEMO_PHONE — together they make the success path unreachable: entering DEMO_PHONE hits "与当前号码相同", entering anything else hits "请使用演示账号的手机号". Confirm this is intended and make at least one path reachable (the happy path is otherwise impossible for the account page entry flow).
+
+[25/55] history.html:258-258  <high/bug>
+删除不持久化：`load()` 用 `!convs.length` 判定需要重新播种，用户删光全部会话后写入 localStorage 的 `[]` 下次加载会被覆盖回演示数据，删除结果丢失，真正的空态（除 `?state=empty` 外）永远不可达。应按「是否首次访问」而非「数组是否为空」来播种。
+--- suggestion ---
+    if (raw == null) { convs = seed(); save(); return; }   /* 仅首次访问播种，空数组视为用户的真实状态 */
+
+[26/55] history.html:257-257  <medium/bug>
+持久化数据未逐项校验：localStorage 只做了 JSON.parse 与 Array 检查，未校验单项的 id/title/ts/count。缺失或非法的 ts 会让 `relTime` 产出 NaN（列表出现「NaN 个月前」）；重复 id 会让删除/重命名按 `forEach` 命中错误对象。建议解析后过滤非法项。
+--- suggestion ---
+    try { convs = raw ? JSON.parse(raw) : []; } catch (err) { convs = []; }
+    if (!Array.isArray(convs)) convs = [];
+    convs = convs.filter(function (c, i, arr) {
+      return c && typeof c.id === 'string' && typeof c.title === 'string' &&
+             typeof c.ts === 'number' && isFinite(c.ts) &&
+             typeof c.count === 'number' &&
+             arr.findIndex(function (x) { return x && x.id === c.id; }) === i;
+    });
+
+[27/55] history.html:470-470  <medium/bug>
+`keydown` 未排除输入法组合态：中文/日文输入法用 Enter 上屏候选词时会直接触发 `saveRename()` 并关闭弹层，导致误保存。应加 `e.isComposing`（或 keyCode 229）判断。
+--- suggestion ---
+    if (e.key === 'Enter') {
+      if (e.isComposing || e.keyCode === 229) return;   /* 输入法上屏候选词，不算提交 */
+      e.preventDefault();
+      saveRename();
+    }
+
+[28/55] history.html:404-404  <medium/bug>
+`showLoading()` 的 900ms 定时器未保存句柄：用户连点「重新加载」会叠加多次 `setTimeout(renderList)`，多次重渲染且无法取消。建议保存 timer 并在启动前 `clearTimeout`。
+--- suggestion ---
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(renderList, 900);
+
+[29/55] history.html:520-520  <low/bug>
+读屏播报区域反复赋相同字符串不会再次触发播报：连续删除两条时 `liveEl.textContent` 都是 '已删除'，第二次不会播报（重命名保存了同名时同理）。建议在赋值前先清空或拼接可变内容。
+--- suggestion ---
+    liveEl.textContent = '';
+    setTimeout(function () { liveEl.textContent = '已删除'; }, 50);
+
+[30/55] chat.html:937-937  <high/bug>
+IME composition bug: this app's primary input is Chinese, where pressing Enter to confirm an IME candidate also dispatches a `keydown` with `key === "Enter"` (and `isComposing === true` / `keyCode === 229`). Without that check, selecting a candidate from 搜狗/讯飞/系统输入法 prematurely submits the half-composed text. Guard on `isComposing`/keyCode 229 before sending.
+--- suggestion ---
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      send(input.value);
+    }
+
+[31/55] chat.html:669-669  <medium/bug>
+`pickPrompt` switches back to keyboard mode but leaves the voice state machine untouched. If the user clicks a prompt while `rec === 'busy'` (识别中), the pending `recTimer` is not cleared, so ~1.2s later its callback overwrites the freshly picked prompt text (`input.value = RECOGNIZED`). If `rec === 'on'`, the recording state is left dangling and re-entering voice mode shows "点击结束录音" with no active timer. Cancel the in-flight recognition and reset `rec` here, mirroring the `modeBtn` handler.
+--- suggestion ---
+    /* 切回键盘态前把在途的识别收干净：否则迟到的识别结果会覆盖刚填入的提示词 */
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    rec = 'off';
+    if (mode !== 'keyboard') { mode = 'keyboard'; renderComposer(); }
+
+[32/55] chat.html:920-920  <medium/bug>
+When the user is not logged in, `Auth.require` is asynchronous (`open(cb)` only fires `cb` after a successful login) while the `busy` guard is set only later, inside `doSend`. Multiple Enter/发送 presses during the login layer queue multiple callbacks, and after login every one of them runs `doSend(text)` → duplicated user bubbles + duplicated AI replies. Re-check `busy` inside the callback (or latch a pending flag that is released by `doSend`/`stopAi`) so a single question cannot be committed twice.
+--- suggestion ---
+    Auth.require(function () {
+      if (busy) return;   /* 登录层期间已提交过，避免重复落地 */
+      doSend(text);
+    });
+
+[33/55] chat.html:806-807  <medium/bug>
+TTS state race: `startSpeaking` cancels the previous utterance, but a cancelled/interrupted utterance still fires `onend`/`onerror`, and both handlers are bound directly to `stopSpeaking`. The stale callback can therefore cancel the *newly* started utterance's speech and flip `speaking`/`speakingBubble` to the idle state mid-playback (button loses its 播报中 indicator while audio continues). Tag each utterance and ignore callbacks that no longer belong to the current one.
+--- suggestion ---
+        currentUtterance = u;        /* 声明一个模块级 currentUtterance = null */
+        u.onend = u.onerror = function () {
+          /* 被 cancel 掉的旧 utterance 也会回调，只有当前这条才允许收状态 */
+          if (currentUtterance === u) stopSpeaking();
+        };
+
+[34/55] chat.html:838-838  <low/security>
+`aiBubbleHTML()` (and `el()` when given non-empty `html`) render answer text via string-concatenated `innerHTML`. Today only constant demo strings flow through, so it is not exploitable yet, but the moment real model output or server-supplied `来源` is wired in this becomes a stored/DOM XSS sink. Prefer building the text nodes with `textContent`/`createTextNode` (or escape before interpolation) so the escaping path is in place ahead of the real backend.
+--- suggestion ---
+    var s = el('span', 'bubble__text', '');
+    s.textContent = DEMO_ANSWER_TEXT;   /* 正文改为 textContent 落字，不拼进 innerHTML */
+    return s;
+
+[35/55] index.html:697-697  <medium/bug>
+互斥守卫只在 `recording` 态生效。`render()` 在进入 `recognizing` 时也会调用 `setBlocked()`，但 `isRecording()` 对 `recognizing` 返回 false，于是识别的那 2 秒里「切换形象」与「键盘输入」会被重新放开：用户可以在识别进行中点开形象选择弹层，随后 `finishRecognize()` 又会 `showModal()` 弹出转写弹窗，两个弹层同时叠在 top layer，状态与焦点都会错乱；也可以直接点键盘链接跳走，白白丢掉正在识别的提问。建议把守卫的判断源改成「非 idle」而不是「recording」。
+--- suggestion ---
+    var blocked = state !== 'idle';
+
+[36/55] index.html:819-820  <low/bug>
+`recognizeTimer` 只被置为 null，从没有人对它 `clearTimeout`。当前因为识别期间 `mic.disabled = true` 暂时进不去第二次识别，所以问题被掩盖；一旦守卫/可用性逻辑调整（例如放开识别期的按钮、或将来加入“取消识别”），旧定时器就会在状态被重置后仍然触发 `finishRecognize()`，弹出与当前状态不符的转写弹窗。建议在 `render()` 或页面 `pagehide` 时统一清理，并在 `finishRecognize` 开头显式 `clearTimeout`。
+
+[37/55] index.html:600-600  <medium/security>
+`renderOptions()` 用字符串拼接 + `innerHTML` 渲染 `a.src / a.name / a.desc`，未做任何转义。目前 `AVATARS` 是硬编码常量所以安全，但这里是把素材路径/文案当数据渲染的信任边界——只要将来改成从接口、配置或后台下发，`"` 即可截断属性，`<img onerror=...>` 之类会直接变成 XSS/属性破坏。建议改为逐个创建 DOM 节点（或至少对插值做 HTML/属性转义），把这条通道的默认安全性定下来。
+
+[38/55] index.html:745-747  <medium/bug>
+降级打开 `qr-sheet` 时只 `setAttribute('open','')`，但 base.css 的兜底定位 `@supports not selector(dialog:modal) { dialog.sheet[open] { position: fixed; ... } }` 只覆盖 `.sheet`，而本弹层用的是 `.modal qrsheet`。在无 `showModal` 的老内核里，这条规则不生效，而页面样式又给 `dialog.modal.qrsheet` 写了 `display: flex`，结果是二维码弹层作为普通块插在文档流里渲染（无遮罩、不居中），与「和 auth.js 的 open() 同一套写法」的预期不符。建议为 modal 变体补一条同口径的 `@supports` 定位规则，或让该弹层复用 `.sheet` 的兜底定位。
+
+[39/55] index.html:85-85  <low/maintainability>
+`dvh` 需要 Chromium 108+，而本页明确面向微信 X5 等老内核（代码里到处是 showModal / localStorage 的降级分支）。不支持的引擎会整条声明解析失败，`height` 直接回落到 base.css 的值，`clamp` 的「矮屏压到 190px」策略全部失效。建议在前面补一行 `vh` 兜底版本，让老内核至少拿到一个合理值。
+--- suggestion ---
+  height: clamp(190px, calc(100vh - 578px), var(--figure-hero));
+  height: clamp(190px, calc(100dvh - 578px), var(--figure-hero));
+
+[40/55] h5v2/index.html:369-369  <medium/bug>
+`<h1>` is nested inside `<span class="bar__title">`, which is invalid HTML: a `<span>` only permits phrasing content, and `<h1>` is flow content. This also produces a second `<h1>` on the page (the masthead already uses one), breaking the heading outline for AT. Use a non-heading element for the mockup header, or hoist the class onto the heading (and update the `.bar__title h1 { font-size: … }` rule accordingly).
+--- suggestion ---
+              <h1 class="bar__title">社科数据助手</h1>
+
+[41/55] h5v2/index.html:88-88  <low/maintainability>
+`.flowpad` is defined here but never referenced by any element in the page (the mockups use `.docpage__flow`). This is dead CSS — remove it, or apply it where it was intended, so it doesn't mislead future maintainers.
+
+[42/55] h5v2/index.html:449-449  <low/maintainability>
+The five composer demos below repeat essentially identical ~30-line markup blocks (two mode-toggle SVGs, the input, the send button with its two SVGs, and the rec button). Any change to an icon, label, or attribute must be applied in five places and will drift over time. Consider extracting a single `<template>` and cloning it with JS, and/or moving the repeated icons into one hidden `<svg><symbol>` sprite referenced via `<use>`.
+
+[43/55] h5v2/index.html:724-726  <low/bug>
+The mode toggle clears only the voice-recognition branch (`rec` + the recognize `timer`); the generation branch (`busy` and `sendTimer`) is left untouched. Because the send/stop button is hidden in voice mode, a user who is mid-generation and toggles to voice loses the stop affordance, and the send button will still read "stop" when they return to keyboard. If a mode switch is meant to fully reset the composer, also `clearTimeout(sendTimer)` and reset `busy`; otherwise document that the simulated generation intentionally keeps running across mode switches.
+
+[44/55] auth.js:33-34  <high/security>
+Hardcoded demo credentials are shipped in the client bundle. `DEMO_PHONE`/`DEMO_CODE` are effectively a login credential/secret embedded in source that anyone can read via View-Source or DevTools, so the "演示用一次性门槛" is not a barrier at all. Even for a demo, credentials should not live in shipped JS; move them to build-time/env injection or a config fetched at runtime, and confirm this file is never deployed as-is to production.
+
+[45/55] auth.js:279-282  <high/security>
+`wxAuthorize()` unconditionally persists an authenticated-looking session (`{ wx: true }`) with no real verification, and `Auth.require()` then short-circuits every WeChat user with `cb(null)`. Because `isWeChat()` only tests the UA string for `MicroMessenger`, any client can spoof the UA and obtain a logged-in state on all pages. This is acceptable only as a demo stub — ensure it is unmistakably flagged and replaced (real flow: code → backend openid exchange) before any non-demo deployment; do not leave the unconditional `set({ wx: true })` reachable in production.
+
+[46/55] auth.js:209-214  <medium/bug>
+`startCountdown()` calls `setInterval` without first clearing an existing timer. If it is ever entered while a countdown is already running (e.g. UI state reset, programmatic `send()`, or a future caller), the previous interval is orphaned: `stopCountdown()` only clears the latest `timer`, so the leaked interval keeps ticking every second indefinitely and repeatedly flips the send button state. Guard by clearing the timer first, and/or early-return when already counting down.
+--- suggestion ---
+  function startCountdown() {
+    if (timer) clearInterval(timer);
+    countdown = CODE_MS / 1000;
+    els.send.disabled = true;
+    tick();
+    timer = setInterval(tick, 1000);
+  }
+
+[47/55] auth.js:23-24  <medium/maintainability>
+Two issues on these declarations: (1) the project rule forbids `var` — use `const`/`let`, which also avoids accidental shared-state bugs on the module-level `timer`/`pending`/`els` variables; (2) the inline comment on `CODE_MS` says the unit is 秒 (seconds) while the value `60000` and the name are milliseconds, which is misleading for the `CODE_MS / 1000` arithmetic below. Fix the comment/name to state the unit unambiguously.
+--- suggestion ---
+  const KEY = 'skl.user';
+  const CODE_MS = 60000;    /* 重发倒计时（毫秒）*/
+
+[48/55] dev-server.py:33-33  <low/security>
+`candidate` is built from an un-normalized request path, so a `..`-containing path (e.g. `/../chat`) resolves outside `ROOT`. Because `self.path` is then rewritten to that same un-normalized string, `SimpleHTTPRequestHandler.translate_path()` (which strips `..`) ends up serving a *different* file than the one that was existence-checked — so the check and the served file can diverge (a detected file can 404, or a file that was never checked gets served). Normalize the candidate and verify it stays under ROOT before accepting the mapping.
+--- suggestion ---
+            candidate = os.path.realpath(os.path.join(ROOT, path.lstrip('/') + '.html'))
+
+[49/55] dev-server.py:28-28  <low/bug>
+Extension resolution (the `/chat` → `chat.html` mapping) lives only in `do_GET`. `SimpleHTTPRequestHandler.do_HEAD` will not apply it, so `HEAD /chat` returns 404 while `GET /chat` returns 200, and any client/cache that probes with HEAD sees inconsistent behavior. Extract the mapping into a small helper (e.g. `_resolve_extension()`) and invoke it from an overridden `do_HEAD` too, before delegating to `super()`.
+
+[50/55] dev-server.py:41-41  <low/maintainability>
+The log filter assumes `args[1]` is always the status code, which only holds for `log_request` (`"%s" %s %s`, requestline, code, size). Other call sites — notably `log_error` (`"code %d, message %s"`), where `args[1]` is the message text — rely on the message not happening to start with `'2'`. This positional heuristic is brittle and can silently swallow a genuine log message. Prefer overriding `log_request`/`log_error` (or passing the level explicitly) instead of inspecting positional args.
+
+[51/55] dev-server.py:47-47  <low/maintainability>
+`int(sys.argv[1])` raises an unhandled `ValueError` for a non-numeric argument and the subsequent `socket` binding would raise on an out-of-range/negative port, producing a raw traceback instead of a usage hint. Wrap the parse and validate the range so an invalid CLI argument fails with a clear message.
+--- suggestion ---
+    try:
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 8791
+    except ValueError:
+        sys.exit(f'invalid port: {sys.argv[1]!r}')
+
+[52/55] .gitignore:5-5  <medium/security>
+The ignore list covers OS artifacts and agent tooling but omits local secrets/configuration that must never be committed. Since this is the only ignore file checked in, add entries for environment and credential files (e.g. `.env`, `.env.*`, `*.local`, `*.pem`, `credentials.json`) so secret material cannot be accidentally staged.
+
+[53/55] .gitignore:3-3  <medium/maintainability>
+Ignoring the whole `.claude/` directory can silently drop project-level, shareable configuration (e.g. `.claude/settings.json`, custom commands/agents) that other contributors or CI rely on. Prefer ignoring only genuinely per-developer artifacts such as `.claude/*.local.*` or specific runtime/cache paths instead of the entire directory.
+
+[54/55] .gitignore:11-11  <high/maintainability>
+`AGENTS.md`/`CLAUDE.md` are typically agent instruction documents meant to be committed as shared project guidance. Ignoring them removes that documentation from the repository for everyone, which also contradicts the surrounding `AGENT配置` intent. Unless these files are strictly personal overrides, remove them from the ignore list (or narrow to a personal variant such as `.claude/CLAUDE.local.md`).
+
+[55/55] .gitignore:10-10  <low/style>
+Comment formatting is inconsistent: every other comment uses `# ` with a space after the hash, but this one uses `#AGENT配置`. Align it for readability/consistency.
+--- suggestion ---
+# AGENT配置
+
+==============================================================================
+PROJECT SUMMARY
+### Top Issues
+
+1. **The authentication layer provides no real security boundary, and pages work around it instead of using it.** `auth.js` ships `DEMO_PHONE`/`DEMO_CODE` in the client bundle (readable via View-Source) and `wxAuthorize()` persists a `{ wx: true }` session based only on a `MicroMessenger` UA string check, so `Auth.require()` short-circuits for anyone spoofing the UA. `phone.html` compounds this by re-declaring the demo credentials (violating auth.js's own §演示账号 rule) and writing the private storage key `skl.user` directly to localStorage, bypassing `Auth`. `account.html` has no session guard at all — `Auth.get()` returning `null` silently falls back to `{}` and renders a normal-looking account page with a working logout button. `chat.html` adds a race on top: `Auth.require` is async while the `busy` guard is set later in `doSend`, so concurrent Enter presses queue duplicate callbacks.
+
+2. **String-concatenated `innerHTML` rendering is a trust boundary that is currently only safe by accident.** `chat.html` (`aiBubbleHTML()`), `index.html` (`renderOptions()` rendering `a.src/a.name/a.desc`), and the `el()` helper all build markup from raw strings. Each is described as "only constant demo data today," but any server/model-supplied field becomes XSS. `account.html` has the same shape for `img.src`: `user.avatar` from localStorage is assigned without validation, allowing an external-origin or `data:` URL load.
+
+3. **Timer and state-machine races recur across the app; guards cover the wrong states or are set too late.** `auth.js` `startCountdown()` calls `setInterval` without clearing a prior interval (orphaned timers). `index.html` `recognizeTimer` is nulled but never `clearTimeout`'d, and `isRecording()` returns false during `recognizing` so the mutual-exclusion guard re-opens the UI mid-recognition. `index.html` mode toggle clears the voice branch but leaves `busy`/`sendTimer`. `chat.html` has both a stale `recTimer` overwriting a freshly picked prompt and a TTS `onend`/`onerror` race that cancels the *newly* started utterance. `history.html` `showLoading()` leaks a 900ms timer handle on repeated reload clicks. `phone.html` has no in-flight submit guard, so double-click + Enter duplicates toasts, writes, and redirects.
+
+4. **IME composition is unhandled in the two Chinese-first input surfaces.** `chat.html` and `history.html` both fire on `Enter` without checking `e.isComposing`/`keyCode === 229`, so confirming a 搜狗/讯飞/系统 candidate sends the message or commits a rename.
+
+5. **The error pages fail in exactly the outage they exist to handle.** `404.html` uses `./h5v2/...` and `./index.html` relatively, which resolve against the *requested* nested URL (e.g. `/foo/bar/`), so styles vanish and "回到首页" leads to a second 404. `500.html` depends on externally served `tokens.css`/`base.css`, relies on an inert `<button id="retry">` with no non-JS fallback despite a comment claiming one, dereferences `getElementById('retry')` without a null check, and uses inline `<script>`/`<style>` that a CSP would block.
+
+6. **Persistence and validation are under-specified.** `history.html` re-seeds when `!convs.length`, so a deliberately emptied list is overwritten on reload (delete never persists), and stored items are only `JSON.parse` + `Array`-checked — bad `ts` yields "NaN 个月前" and duplicate ids corrupt delete/rename. `phone.html` copy-pastes phone validation across send/save handlers, and its same-number check plus the DEMO_PHONE check together make the success path unreachable (logic dead-end).
+
+7. **Modern CSS is used against explicitly-targeted legacy WeChat X5 kernels.** `base.css` uses `1lh` and `100dvh` (dropped entirely on old Chromium, breaking the error-container anti-jump and viewport fill), `index.html` uses `dvh`, and `index.html`'s `qr-sheet` falls back to `setAttribute('open','')` — but base.css's `@supports not selector(dialog:modal)` fallback only covers `.sheet`, not `.modal qrsheet`.
+
+8. **`dev-server.py` has an un-normalized path traversal and inconsistent routing.** `candidate` is built from the raw path with no `..` stripping (rewriting `self.path` to the same un-normalized string), extension resolution lives only in `do_GET` so `HEAD /chat` 404s where `GET` succeeds, and the log filter assumes `args[1]` is always a status code (false for `log_error`).
+
+### Module Hotspots
+
+- **`phone.html` (6 comments)** — highest density: duplicated hardcoded credentials, direct `localStorage` bypass of `Auth`, premature `stopCountdown()`, missing submit guard, duplicated validation, unreachable success path.
+- **`h5v2/tokens.css` (5)** and **`h5v2/base.css` (4)** — the shared design system carries accessibility (contrast 3.9:1 for `--ink-3` at 13px; `--h-pill` at 36px < 44px `--h-tap`), token-hygiene (dark block re-declares `#2E2C40`/`#2A2743` instead of aliasing, bare `#FFFFFF`), and legacy-browser (`1lh`/`dvh`) defects. Because these are tokens/base styles, each defect propagates to every page.
+- **`index.html` (5) + `h5v2/index.html` (4)** — the two entry points both show state-machine gaps (guard limited to `recording`, uncleared `recognizeTimer`, mode toggle leaving `sendTimer`) plus invalid markup (nested `<h1>` inside `<span>`, duplicate `<h1>`), dead `.flowpad` CSS, and five near-identical composer blocks that will drift.
+- **`history.html` (5) / `chat.html` (5)** — same class of input and async-state bugs; both also contain the unescaped-`innerHTML` trust boundary.
+- **`auth.js` (4)** — small file, but its defects (client-bundled creds, UA-only auth, uncleared interval, `var` usage, stale `秒` comment on `CODE_MS`) are referenced by every other page.
+
+### Cross-Cutting Concerns
+
+- **Auth is reinvented per page rather than centralized.** `phone.html` duplicates credentials and the storage key, `account.html` reads `Auth.get()` and ignores the null result, `chat.html` races the async `Auth.require`. Any change to the key or user shape silently desyncs callers.
+- **UI side effects happen before validation/guards.** `phone.html` clears the countdown before validating and has no submit lock; `chat.html` sets `busy` after the async auth hop; `index.html` only locks `recording`, not `recognizing`. Same failure mode in three files.
+- **Modern-platform features used on legacy targets without verified fallbacks.** `1lh`/`dvh`/`clamp` in `h5v2/base.css` and `index.html`, plus the `dialog` fallback in `base.css` not matching the `.modal qrsheet` selector in `index.html`.
+- **Accessibility regressions repeated across surfaces.** Low-contrast `--ink-3`, sub-44px `--h-pill`, invalid heading nesting in `h5v2/index.html`, and a live region in `history.html` that re-assigns the same string so repeated deletions never announce.
+- **Repetition where a single helper is needed.** Copy-pasted phone validation (`phone.html`), five duplicated composer blocks (`h5v2/index.html`), and duplicated demo credentials (`auth.js` / `phone.html`).
+- **Unescaped dynamic rendering into `innerHTML`** in `chat.html`, `index.html`, and (via `img.src`) `account.html`.
+- **Hard-coded values that should route through the token pipeline**: `#FFFFFF` in `base.css`, literal `#2E2C40`/`#2A2743` in `tokens.css`, and the 36px value derived from an assumption that only holds at 100% root font (the file's own `data-font-scale` block raises root to 125%/145%).
+
+### Quick Wins
+
+- **`.gitignore`** — add `.env`, `.env.*`, `*.local`, `*.pem`, `credentials.json`; stop ignoring shared `AGENTS.md`/`CLAUDE.md` and `.claude/settings.json`; fix the `#AGENT配置` spacing to `# `. Pure text edit, zero risk.
+- **IME guards** — add `if (e.isComposing || e.keyCode === 229) return;` to the Enter handlers in `chat.html` and `history.html`. One line each, fixes the primary Chinese-input path.
+- **`tokens.css` token hygiene** — alias `--line`/`--brand-soft` via `var()` in the dark block, and darken `--ink-3` to ~`#6A668F` to clear WCAG AA 4.5:1.
+- **`history.html` announcements/timers** — clear `liveEl.textContent` before writing, and store/`clearTimeout` the `showLoading()` timer. Small, localized.
+- **`auth.js` cleanups** — `var` → `const`/`let`, correct the `CODE_MS` comment (ms, not 秒), and `clearInterval` before `setInterval` in `startCountdown()`.
+- **`404.html` / `500.html`** — make asset and home links root-absolute, inline minimal critical CSS, add a `<noscript>`/no-JS retry, and null-check `getElementById('retry')`.
+- **`phone.html`** — extract a single `validatePhone()`, delete the duplicated demo constants, move `stopCountdown()` after validation succeeds, and add an in-flight submit guard.
+- **`dev-server.py`** — wrap `int(sys.argv[1])` and validate the port range to emit a usage hint instead of a traceback.
+
+</all_comments>
+
+==============================================================================
+(rendered offline from ocr-scan.json; no second LLM run)
