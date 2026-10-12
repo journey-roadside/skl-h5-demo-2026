@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """演示站开发服务器。
 
-用法：python dev-server.py [端口]   （默认 8791）
+用法：python dev-server.py [端口] [绑定地址]   （默认 8791 127.0.0.1）
 
 不用现成的静态服务器（serve / http-server 之类），因为它们会把
 /chat.html 重定向成 /chat 这种「干净 URL」——查询串在 301 里直接丢掉，
@@ -11,6 +11,11 @@
 Python 自带的 http.server 不改写 URL，但也不认无扩展名路径。
 所以这里在它的基础上补一层：/chat → chat.html。
 两种写法都能命中，`?q=` 一律原样保留。
+
+真机测试：手机要访问就得绑到局域网地址，例如
+    python dev-server.py 8791 0.0.0.0
+那时这台机器上任何能连到该端口的人都能读仓库内容（含 .git/），
+所以只在可信网络里这么做。
 
 只管本地演示，不做任何鉴权 —— 不要拿它对外。
 """
@@ -24,6 +29,21 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
+
+    def send_head(self):
+        """屏蔽点开头的路径。
+
+        SimpleHTTPRequestHandler **不**拦 .git/ 这类目录 —— 换掉 npx serve
+        之后这里就少了一层原本默认存在的保护（实测 /.git/config 能读到，
+        里面有 remote 地址）。绑 127.0.0.1 时风险有限，但真机测试要绑
+        0.0.0.0，那就等于把 .git/ 挂出去，所以在这里堵掉。
+        按路径段判断，不做字符串 contains —— 免得误伤 .well-known 之类。
+        """
+        segs = [s for s in self.path.split('?', 1)[0].split('/') if s]
+        if any(s.startswith('.') for s in segs):
+            self.send_error(404, 'File not found')
+            return None
+        return super().send_head()
 
     def do_GET(self):
         # /chat 与 /chat.html 都能命中同一个文件。
@@ -45,4 +65,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8791
-    http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+    host = sys.argv[2] if len(sys.argv) > 2 else '127.0.0.1'
+    http.server.ThreadingHTTPServer((host, port), Handler).serve_forever()

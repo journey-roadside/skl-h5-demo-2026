@@ -1,6 +1,7 @@
 # 验证与临时产物
 .playwright-mcp/
 .claude/
+dev-server.py
 
 # 系统
 .DS_Store
