@@ -1,0 +1,1007 @@
+/* ==========================================================================
+   湖北社科数据信息联盟 · 微信 H5 设计体系 v2 —— 基础层与组件层
+   位置：05-Design/design-system/h5v2/base.css
+   依赖：tokens.css（必须先引入）
+   引入顺序：tokens.css → base.css → 页面样式
+
+   业务页面只写结构与类名，不新增裸色值 / 裸字号 / 裸间距。
+   不覆写本文件里的组件样式，用变体类扩展。
+   ========================================================================== */
+
+/* ==========================================================================
+   A · 重置
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* 不写 text-size-adjust —— 让微信的字体档位真的放大文字。
+     写了它等于关掉微信的适老化放大，那是拿合规换整齐。 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: var(--w-body);
+  line-height: var(--lh-body);
+  overflow-wrap: break-word;
+  /* 数字等宽：一切数据列对齐 */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p, figure, blockquote, dl, dd { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: var(--w-head);
+  line-height: var(--lh-heading);
+  letter-spacing: 0;
+  text-wrap: balance;      /* 标题不出现孤字 */
+  /* 标题永不斜体；中英混排的强调用字重或品牌色 */
+}
+
+img, svg, video { display: block; max-width: 100%; }
+
+/* hidden 必须真的隐藏。
+   `[hidden]` 的 display:none 来自 UA 样式表，而作者样式一律胜过 UA 样式 ——
+   上面那条 `img { display: block }`（元素选择器，特异性最低）会把它盖掉，
+   于是 <img hidden> 照旧渲染，只是塌成一条 44×10 的占位框。
+   实测踩过：账户页微信身份行的头像位被这条空框顶下去 5px，图标看着偏下。
+   这里显式声明一次，别让「写 hidden 却没生效」成为隐形陷阱。 */
+[hidden] { display: none !important; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* 焦点环：静态出现，永不淡入 */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+:focus:not(:focus-visible) { outline: none; }
+/* 弹层容器只做焦点兜底，不是可操作控件。
+   程序化聚焦（showModal 的自动聚焦、或页面显式 dialog.focus() 收走初始焦点）
+   会把上面的焦点环画在容器自己身上。抑制容器自身的环，
+   不动里面真正控件的焦点环。 */
+dialog:focus-visible { outline: none; }
+
+/* 只在屏幕阅读器里可见 */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ==========================================================================
+   B · 版式工具
+   ========================================================================== */
+
+.t-display { font-size: var(--text-2xl); line-height: var(--lh-display); font-weight: var(--w-head); }
+.t-title   { font-size: var(--text-xl);  line-height: var(--lh-heading); font-weight: var(--w-head); }
+.t-lg      { font-size: var(--text-lg);  line-height: var(--lh-heading); font-weight: var(--w-head); }
+.t-md      { font-size: var(--text-md);  font-weight: var(--w-mid); }
+.t-body    { font-size: var(--text-base); line-height: var(--lh-body); }
+.t-xs      { font-size: var(--text-xs);  color: var(--ink-3); }
+.t-muted   { color: var(--ink-3); }
+.t-2nd     { color: var(--ink-2); }
+.t-brand   { color: var(--brand); }
+.t-num     { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* 长文正文：行宽受控，超 40 字回行困难 */
+.prose { max-width: var(--measure); }
+.prose > * + * { margin-top: var(--sp-para); }
+.prose h2 { font-size: var(--text-lg); margin-top: var(--sp-xl); }
+.prose h3 { font-size: var(--text-md); margin-top: var(--sp-lg); }
+
+.stack   { display: flex; flex-direction: column; gap: var(--sp-md); }
+.stack--sm { gap: var(--sp-sm); }
+.stack--lg { gap: var(--sp-lg); }
+.cluster { display: flex; align-items: center; gap: var(--sp-sm); flex-wrap: wrap; }
+/* 微信 Android 旧内核（X5，微信 8.0.33 前）对 flex gap 支持不完整；
+   若要覆盖到该版本，把 .cluster 的 gap 换成 margin-inline-end 相邻选择器。 */
+
+/* ==========================================================================
+   C · 页面骨架
+   ========================================================================== */
+
+.h5 {
+  min-height: 100dvh;          /* dvh 不用 vh：微信地址栏收放会让 100vh 跳变 */
+  max-inline-size: var(--w-content);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.h5__main {
+  flex: 1 1 auto;
+  padding-inline: var(--pad-start) var(--pad-end);
+}
+
+/* 页头：不画返回箭头、不画微信胶囊 —— 那两样由微信容器提供 */
+.pagehead {
+  padding: var(--sp-lg) var(--pad-end) var(--sp-md) var(--pad-start);
+  display: flex; align-items: center; gap: var(--sp-sm);
+  min-height: var(--h-tap);
+}
+.pagehead__title { font-size: var(--text-xl); font-weight: var(--w-head); }
+.pagehead__sub { font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--sp-3xs); }
+
+/* 区块：分段用留白与细线，不用色块 */
+.sec { padding-block: var(--sp-lg); }
+.sec + .sec { border-top: 1px solid var(--line); }
+.sec__head { margin-bottom: var(--sp-md); }
+.sec__head h2 { font-size: var(--text-md); }
+.sec__head p { font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--sp-2xs); }
+
+/* ==========================================================================
+   D1 · 卡片 —— 大圆角 + 柔和阴影，是 v2 的主要形状
+   ========================================================================== */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+  padding: var(--sp-lg);
+}
+/* 卡内嵌套：换浅雾底、去掉阴影，避免"两层阴影打架"。
+   （v1 禁止卡中卡；v2 允许，但内层必须降级为无阴影的浅底区块。） */
+.card__inset {
+  background: var(--mist-1);
+  border-radius: var(--r-md);
+  padding: var(--sp-md);
+  box-shadow: none;
+}
+.card--pad-sm { padding: var(--sp-md); }
+
+/* ==========================================================================
+   D2 · 数字人形象位 —— v2 的核心资产
+   ========================================================================== */
+
+/* 首页态：占屏约 40%，底部渐隐以便问候语压在上层仍可读 */
+.figure {
+  position: relative;
+  width: 100%;
+  height: var(--figure-hero);
+  display: grid; place-items: end center;
+  /* 底部渐隐：形象下缘化开，避免生硬截断 */
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 94%);
+          mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 94%);
+}
+.figure__img {
+  max-width: 100%; max-height: 100%; width: auto; height: auto;
+  object-fit: contain; object-position: 50% 100%;
+  /* 素材已是**透明底**（四角 alpha=0），所以不需要「白底融合」那套收边了。
+     原先的径向遮罩 + multiply 是为白底抠图写的，现在只剩副作用：
+     径向遮罩的纵向实心区只覆盖 20%~80%，而 1:1 素材的人物从第 0 行就开始，
+     头顶整段落在渐隐区里被压没了。
+     换成透明底素材时这两条就该删 —— 见 §6 与版本记录。 */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* 形象背后的一圈品牌光晕，让形象"落"在页面里而不是贴上去 */
+.figure::before {
+  content: "";
+  position: absolute; inset: 8% 6% 12%;
+  background: var(--grad-aura);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* 对话页态：缩为顶栏小头像。
+   这里原先写了几条 mask / blend 的复位（none / normal）来抵掉基类的白底融合，
+   基类那两条已随透明底素材删掉，这些复位也就没有对象了，一并清掉。 */
+.figure--dock {
+  width: var(--figure-dock); height: var(--figure-dock);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--brand-soft);
+  display: block;
+  /* 必须去掉 .figure 基类的底部渐隐遮罩。
+     那是给首页大形象「下缘化开」用的，对 44px 的圆头像只剩副作用：
+     遮罩从 58% 就开始透明，圆的下三分之一被淡掉，
+     看着像底边有一层渐变（实际是头像被抠掉了）。 */
+  -webkit-mask-image: none; mask-image: none;
+}
+.figure--dock .figure__img {
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: 50% 12%;
+}
+.figure--dock::before { display: none; }
+
+/* 深色下原先要把 multiply 换成 screen，否则白底会被压成灰块。
+   素材换成透明底后搭配混合模式已全部移除，这里只留一点点提亮 ——
+   深色底上的浅色人物边缘会显得比实际更暗，轻提一档对比更贴。 */
+@media (prefers-color-scheme: dark) {
+  .figure__img { filter: brightness(1.06) contrast(1.04); }
+  .figure--dock .figure__img { filter: none; }
+}
+
+/* ==========================================================================
+   D2b · 对话页欢迎卡 —— 横向卡：左文案 + 右形象
+   形态取自参考图 CueMe 对话页。对话尚未开始时，用一张卡把
+   "我是谁、能做什么、从哪里开始"一次说清，而不是留一片空白等用户输入。
+   有了第一条消息后，这张卡与 chips 让位给对话流。
+   ========================================================================== */
+
+/* 卡内形象的几何。这是**组件几何**不是设计令牌，所以随组件放在这里，
+   不进 tokens.css（那份是颜色/字号/间距等全站语义）。
+   宽高分开给：形象是 1:1 素材，但高度要额外容纳「头顶出血」以外的观感余量，
+   所以不写成同一个值 —— 将来想只改高不改宽也留了口子。
+   尺寸按「形象占卡片高 70%」定（375 / 414 / 320 三档）。
+   **占比是自指的**：形象越大 → 文字列越窄 → 标题折行越多 → 卡片越高 →
+   占比又被拉回去。所以不能解公式，要按实测的收敛点定 ——
+   下面的数值是实测出来的，改文案或字号后必须重测，别按比例外推。
+
+   代价：70% 与「标题 ≤2 行」互斥。2 行时形象上限只到 51%/60%/65%，
+   取占比就要接受窄屏标题 3 行、卡片变高。
+
+   用断点而不是 clamp：形象需求不单调（窄视口卡片更高，同样 70% 反而要更大的
+   形象），一条曲线表达不了；硬凑会写出 min > max 的反向 clamp，看着像 bug。
+   （别写 em：:root 的 em 是固定根字号，不随视口变，形象会被钉死。） */
+:root {
+  --herocard-figure-w: 137px;   /* ≥415：沿用 80% / 90% 档 */
+  --herocard-figure-h: 137px;
+}
+/* 320 / 375 / 414 三档 70% 的实测解，逐档单独量出来的。
+   三档的卡片高各不相同（320→220px、375→191px、414→201px），所以 70%
+   对应的形象宽也不同，且**不单调**（375 只需要 134px，反而比 320 的 152px 小）——
+   那是标题在哪一档恰好少折一行造成的。因此只能一档一条规则，别想着用曲线合并。 */
+@media (max-width: 344.98px) {              /* 320 档 */
+  :root { --herocard-figure-w: 152px; --herocard-figure-h: 152px; }
+}
+@media (min-width: 345px) and (max-width: 394.98px) {   /* 375 档 */
+  :root { --herocard-figure-w: 134px; --herocard-figure-h: 134px; }
+}
+@media (min-width: 395px) and (max-width: 414.98px) {   /* 414 档 */
+  :root { --herocard-figure-w: 140px; --herocard-figure-h: 140px; }
+}
+
+.herocard {
+  position: relative;
+  display: flex;
+  /* 顶部对齐：形象要往上出血，底部对齐会把它按在卡底，出血就没了 */
+  align-items: flex-start;
+  /* 允许换行：卡内可以再放一行「占满整卡宽度」的东西（如提示词位）。
+     只有两个子元素且放得下时不换行，既有卡片的外观不变。 */
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+  background: var(--surface);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-card);
+  padding: var(--sp-lg) var(--sp-lg) var(--sp-md);
+  /* 这里不能裁剪 —— 卡内形象要越出卡片上沿（见 __figure）。
+     原先靠 overflow: hidden，同时也顺手裁掉了渐变块与内容溢出；
+     现在两件事各有其主：渐变块自己继承圆角（见 ::before），
+     提示词轮播自己 overflow: hidden，所以卡片可以完全不裁。
+     注意别改成 clip-path: inset(0 …)：那是四边一起裁，头顶照样被切。 */
+}
+/* 卡内一层极浅品牌渐变，让白卡不生硬。
+   沿卡片自身圆角裁切：::before 是 inset:0 的绝对定位子元素，矩形四角会顶在
+   卡片的直角上，若父层裁切被放开（见 .herocard 的 overflow），白卡圆角外
+   会露出一点点浅紫。inherit 拿父层的圆角即可，不必重复写数值。 */
+.herocard::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(160deg, var(--brand-soft) 0%, transparent 62%);
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* 文案块：正常流里唯一的行内内容，行高由它自己决定。
+   右侧给形象留出宽度 —— 形象已改为绝对定位（见上），不再占位，
+   所以这段让位必须由这里显式给，否则文字会钻到形象底下。
+   宽度取自 --herocard-figure-w（与形象同一条曲线，见上面的 :root）。 */
+.herocard__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: calc(var(--herocard-figure-w) + var(--sp-md));
+}
+
+/* 卡内整宽行：占满整卡宽度，与上下内容靠 gap 留白。
+   用途是「需要一条完整宽度」的内容 —— 挤在 __body 里会被形象分走一半宽。 */
+.herocard__wide { flex: 1 1 100%; position: relative; min-width: 0; }
+.herocard__hi { font-size: var(--text-xs); color: var(--ink-3); }
+.herocard__title {
+  margin-top: var(--sp-2xs);
+  font-size: var(--text-lg);
+  font-weight: var(--w-head);
+  line-height: var(--lh-heading);
+  text-wrap: balance;
+}
+.herocard__cta { margin-top: var(--sp-md); }
+
+/* 卡内形象：靠右上，头部越出卡片上沿（出血）。
+
+   **绝对定位，脱离正常流。** 这是关键 —— 早先它是个 150px 高、却在流里的
+   flex 项，整行高度被它撑到 150px；而文案块在桌面上只有 56px（标题一行），
+   于是缩下来的是「标题与提示词之间空出 66px」，窄屏则是它吃掉 120px 宽度、
+   文字列只剩 108px、标题被迫折五行。两个症状同一个病根。
+   脱离流之后行高只由文案决定，上面两个问题一起消失，也不必按分辨率分档调尺寸。
+
+   出血量：绝对定位的 `top` 相对的是包含块的**内边距盒**（此处即卡片上沿，无边框），
+   所以直接写 -20px 就是「越出卡片 20px」，不要再减去 padding-top ——
+   那是负 margin 时代的算法（流内起点在 content 顶部，才需要 24+20）。
+   卡片上沿之外那 20px 需要上方有空间，由页面给（见 chat.html），
+   否则会被 sticky 顶栏盖住。
+
+   尺寸随屏宽连续缩放（clamp）：窄屏小一点、宽屏大一点，
+   文字列才能始终拿到合适比例，而不是靠断点跳变。 */
+.herocard__figure {
+  position: absolute;
+  top: -20px;
+  right: var(--sp-lg);
+  width: var(--herocard-figure-w);
+  height: var(--herocard-figure-h);
+  display: block;
+}
+/* 底部渐隐：与首页同一种手法（下缘化开），但曲线不同 ——
+   首页的 58%→94% 是给占屏 40% 的大形象定的，照搬到卡片里会把大半个身子抹掉；
+   这里是「头为主、只化下缘」，实心区推到 70%。
+   遮罩加在**图片**上，图片撑满盒子，所以区间直接映射到形象上。 */
+.herocard__figure .figure__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
+          mask-image: linear-gradient(180deg, #000 0%, #000 70%, transparent 100%);
+}
+
+/* 关注点：焦点环在卡片这种大面积元素上不好看，用内描边替代 */
+.herocard:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+
+/* ==========================================================================
+   D3 · 对话链路 —— v1 完全没有的部分
+   ========================================================================== */
+
+/* 对话页骨架：内容整体滚动，底部输入条 sticky 吸底。
+   不用"固定高度 + 内层滚动"——那需要写死高度，违反官方"避免绝对高度"。
+   宽度比 .h5 宽（--w-docpage 1000px），PC 端对话流与输入条才不至于挤在
+   一条 640px 的窄栏里。手机上仍占满宽度，所以不影响 H5 主场景。 */
+.docpage {
+  min-height: 100dvh;
+  max-inline-size: var(--w-docpage);
+  margin-inline: auto;          /* 宽屏居中；手机上是 no-op */
+  display: flex; flex-direction: column;
+}
+.docpage__bar {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  display: flex; align-items: center; gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--pad-end) var(--sp-sm) var(--pad-start);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  min-height: var(--h-tap);
+}
+.docpage__bar h1 { font-size: var(--text-md); font-weight: var(--w-head); }
+.docpage__flow {
+  flex: 1 1 auto;
+  padding: var(--sp-md) var(--pad-end) var(--sp-md) var(--pad-start);
+  display: flex; flex-direction: column; gap: var(--sp-md);
+}
+.docpage__foot {
+  position: sticky; bottom: 0; z-index: var(--z-sticky);
+  background: var(--canvas);
+  padding-top: var(--sp-sm);
+}
+
+/* 问候语 */
+.greet { position: relative; z-index: 2; }
+.greet__hi { font-size: var(--text-lg); font-weight: var(--w-head); line-height: var(--lh-heading); }
+.greet__sub { margin-top: var(--sp-xs); font-size: var(--text-base); color: var(--ink-2); }
+
+/* AI 标识 —— 合规要求，任何对话页必现。不是可选项。 */
+.aiflag {
+  padding: var(--sp-sm) var(--sp-md);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+
+/* 气泡 */
+.bubble {
+  /* 手机上是 84% 的那个 84%；PC 上被 --measure 兜住（含 padding 用 border-box）。
+     没有这道兜底时，对话页在 1000px 容器下一行能放约 50 个汉字，
+     超出 §3 定的正文行宽（≈26–32 字）—— 眼睛回行会错行。 */
+  max-width: min(84%, var(--measure));
+  padding: var(--sp-sm) var(--sp-md);
+  font-size: var(--text-base);
+  line-height: var(--lh-body);
+  border-radius: var(--r-bubble);
+}
+.bubble--user {
+  align-self: flex-end;
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  border-bottom-right-radius: var(--r-xs);
+}
+.bubble--ai {
+  align-self: flex-start;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-card);
+  border-bottom-left-radius: var(--r-xs);
+}
+/* 来源标注：AI 回答必须可核查 —— 连带出处，是这套体系的语气要求 */
+.bubble__src {
+  display: block;
+  margin-top: var(--sp-sm);
+  padding-top: var(--sp-xs);
+  border-top: 1px solid var(--brand-soft);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+/* 生成中：三点。不是"加载转圈"，因为这里是"正在写字" */
+.bubble--typing { display: inline-flex; gap: var(--sp-2xs); align-items: center; }
+.bubble--typing i {
+  width: 6px; height: 6px; border-radius: var(--r-pill);
+  background: var(--brand-soft);
+  border: 1px solid var(--brand);
+  animation: typing 1.2s var(--ease-in-out) infinite;
+}
+.bubble--typing i:nth-child(2) { animation-delay: .16s; }
+.bubble--typing i:nth-child(3) { animation-delay: .32s; }
+@keyframes typing { 0%, 60%, 100% { opacity: .35; } 30% { opacity: 1; } }
+
+/* 语音波形 —— 播报 / 收音状态 */
+.wave { display: inline-flex; align-items: center; gap: 3px; height: 22px; }
+.wave i {
+  display: block; width: 3px; border-radius: var(--r-xs);
+  background: var(--grad-wave);
+  transform: scaleY(.5);
+}
+.wave i:nth-child(1) { height: 8px; }
+.wave i:nth-child(2) { height: 14px; }
+.wave i:nth-child(3) { height: 20px; }
+.wave i:nth-child(4) { height: 12px; }
+.wave i:nth-child(5) { height: 17px; }
+.wave i:nth-child(6) { height: 9px; }
+.wave i:nth-child(7) { height: 13px; }
+/* 只在真正播报/收音时动；静止态是一个静态图形，不空转 */
+.wave.is-live i { animation: wave 1.1s var(--ease-in-out) infinite alternate; }
+.wave.is-live i:nth-child(1) { animation-delay: 0s; }
+.wave.is-live i:nth-child(2) { animation-delay: .1s; }
+.wave.is-live i:nth-child(3) { animation-delay: .2s; }
+.wave.is-live i:nth-child(4) { animation-delay: .3s; }
+.wave.is-live i:nth-child(5) { animation-delay: .4s; }
+.wave.is-live i:nth-child(6) { animation-delay: .5s; }
+.wave.is-live i:nth-child(7) { animation-delay: .6s; }
+@keyframes wave { from { transform: scaleY(.42); } to { transform: scaleY(1); } }
+
+/* 底部输入条 —— 两态：键盘态（文字输入）/ 录音态（语音录入）
+   左侧按钮切换模式。图标表示「当前模式」：键盘态显示键盘图标，录音态显示麦克风图标。
+   两个图标都写在 DOM 里由 CSS 切换，比用 JS 换 SVG 更稳 ——
+   切换模式时输入框只是 display:none，已输入的文字与焦点都不丢。 */
+.composer {
+  display: flex; align-items: center; gap: var(--sp-sm);
+  padding: var(--sp-sm) var(--pad-end) calc(var(--sp-sm) + var(--pad-bottom)) var(--pad-start);
+}
+
+/* 模式切换（左）。图标表模式，动作由 aria-label 说明 —— 见 DESIGN.md §10。
+   高度锁死与右侧输入框相等（--h-input），否则输入条上下沿参差。
+   它挂的是 .iconbtn 基类，基类是 clamp(46px, 15vw, 60px)（为首页底部大圆钮定的），
+   375px 视口下算出 56px、414px 下 60px，都比 48px 的输入框高。
+   这里按输入框把它压回来，而不是把输入框撑高 —— 输入框 48px 是体系定的舒适高度。
+   选择器写成 .iconbtn.composer__mode 而不是单个 .composer__mode：
+   两者特异性相同时，写在后面的 .iconbtn 基类会赢，规则等于没写。 */
+.iconbtn.composer__mode {
+  width: var(--h-input);
+  height: var(--h-input);
+  min-height: var(--h-input);
+}
+.composer__mode svg { width: clamp(20px, 6.4vw, 24px); height: clamp(20px, 6.4vw, 24px); }
+/* 图标表「按下去会得到什么」，不是「现在是什么模式」：
+   键盘态显示麦克风（点了去录音），录音态显示键盘（点了回打字）。
+   两种写法在纸面上都说得通，但显示当前模式会造成实际困惑 ——
+   输入条里摆着一个键盘图标，用户会以为「点它是唤起键盘」，
+   而它其实会把输入框收走切到录音。图标与 aria-label 现在表达同一件事。 */
+.composer__mode .i-keyboard { display: none; }
+.composer[data-mode="voice"] .composer__mode .i-voice { display: none; }
+.composer[data-mode="voice"] .composer__mode .i-keyboard { display: block; }
+
+/* 键盘态（右）：文字输入框，点它唤起移动端键盘 */
+.composer__field {
+  flex: 1 1 auto;
+  min-width: 0;            /* 必须：flex 项默认 min-width:auto，长 placeholder 会把输入框撑开，
+                              把右侧按钮挤出容器（这是输入条最常见的翻车点） */
+  min-height: var(--h-input);
+  display: flex; align-items: center; gap: var(--sp-xs);
+  padding: var(--sp-xs) var(--sp-md);
+  background: var(--surface);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-card);
+  font-size: var(--text-base);
+  color: var(--ink-3);
+}
+.composer__field input {
+  flex: 1 1 auto; min-width: 0;
+  border: 0; background: none; outline: none;
+  font-size: var(--text-base); color: var(--ink);
+  /* 聚焦时自动滚到底部条之上，键盘不挡输入 */
+  scroll-margin-block: 40vh;
+}
+/* 框内有发送钮时收内边距。
+   用 :has() 而不是给 .composer__field 加类：发送钮是可选内容，
+   字段该不该收内边距由「框里有没有它」决定，不该让页面额外去同步一个类名。
+   微信旧内核若不支持 :has()，退化结果只是右多 8px、框高多 4px，不影响功能。
+
+   横向：基类右内边距是 --sp-md(16px)，那是给「只有文字」的输入框的。
+   发送钮自身已带 36px 可辨形体，再叠 16px 会显得它缩在框里，收到 --sp-xs(8px)。
+   纵向：基类是上下各 --sp-xs(8px)。36px 钮 + 8×2 = 52px 会把框撑到 52 ——
+   比左侧 48px 的模式钮高 4px，输入条三件不再齐平。收到 --sp-2xs(4px) 后
+   36+8 = 44 < min-height(48)，框高重新由 min-height 决定，回到 48px。 */
+.composer__field:has(.composer__send) {
+  padding-right: var(--sp-xs);
+  padding-block: var(--sp-2xs);
+}
+.composer[data-mode="voice"] .composer__field { display: none; }
+
+/* 发送 / 停止：圆形图标钮，长在输入框**内部**最右（.composer__field 的子元素）。
+   三态由 data-send 驱动，全在 CSS 里，页面只改属性、不写状态样式：
+     (无值)  未输入 —— 箭头置灰、不可点（用 disabled，语义与样式一起生效）
+     ready   已输入 —— 箭头点亮、可点
+     stop    生成中 —— 换成实心方块，再点即停止
+   尺寸取 --h-pill(36px) 而不是与输入框同高：它在框**里**，同高会顶满上下内边距，
+   视觉上把输入框撑爆。36px 在 48px 的框里上下各留 6px，是「框内控件」该有的呼吸。
+   选择器带 .iconbtn 前缀的理由同 .composer__mode：裸类名会被后面的基类盖掉。 */
+.iconbtn.composer__send {
+  width: var(--h-pill);
+  height: var(--h-pill);
+  min-height: var(--h-pill);
+  flex: 0 0 auto;
+  /* 置灰默认色写在 base 规则上，不挂在 [disabled] 下 ——
+     图标默认是箭头，这就是「置灰的向上箭头」这一初始外观；
+     一旦切到就绪 / 停止态，下面两条把 color 与底一起换掉。 */
+  color: var(--ink-3);
+  background: var(--surface);
+}
+.iconbtn.composer__send svg { width: 20px; height: 20px; }
+/* 就绪：箭头点亮。用实心品牌底而非淡底 —— 与「停止」共用同一个「可按」的视觉强度，
+   两个态的按钮重量不该变，只在图标与底色语义上区分。 */
+.iconbtn.composer__send[data-send="ready"] {
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  box-shadow: var(--sh-brand);
+}
+/* 停止：实心方块。方块比箭头小一圈是刻意的 —— 停止是「打断」，
+   不该和发送一样抢眼；缩小的方块落在同尺寸圆钮里，观感更克制。 */
+.iconbtn.composer__send[data-send="stop"] {
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  box-shadow: var(--sh-brand);
+}
+.iconbtn.composer__send[data-send="stop"] svg { width: 16px; height: 16px; }
+/* 三态图标互斥 */
+.composer__send .i-stop { display: none; }
+.iconbtn.composer__send[data-send="stop"] .i-arrow { display: none; }
+.iconbtn.composer__send[data-send="stop"] .i-stop { display: block; }
+
+/* 录音态（右）：按钮。点一下开始录，再点一下结束 */
+.composer__rec {
+  flex: 1 1 auto; min-width: 0;
+  min-height: var(--h-input);
+  display: none; align-items: center; justify-content: center;
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-radius: var(--r-pill);
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  white-space: nowrap;
+  transition: background-color var(--dur-short) var(--ease-out),
+              color var(--dur-short) var(--ease-out),
+              transform var(--dur-micro) var(--ease-out);
+}
+.composer[data-mode="voice"] .composer__rec { display: flex; }
+.composer__rec:active { transform: translateY(1px); }
+/* 录音进行中：转实心品牌底，文案同步变成「点击结束录音」。
+   状态不只靠颜色表达（DESIGN.md §10）。 */
+.composer__rec[data-rec="on"] { background: var(--brand); color: var(--on-brand); }
+/* 识别中：禁用，避免重复提交 */
+.composer__rec[aria-busy="true"] { opacity: .6; cursor: not-allowed; transform: none; }
+
+/* 圆形操作钮：录音 / 键盘。尺寸随视口收缩 —— 320px 窄机放得下才不横向溢出。
+   间距上下限都抬高了一档（原 clamp(10px,3.4vw,18px)）：两个钮之间有明确的
+   分隔才读得出是「两个独立动作」，贴太近会像一组。320px 下两颗 46px 钮
+   加 14px 间距仍在屏内，不引起横向溢出。 */
+.dock { display: flex; align-items: center; gap: clamp(14px, 4.2vw, 22px); }
+.iconbtn {
+  width: clamp(46px, 15vw, var(--h-dock));
+  min-height: clamp(46px, 15vw, var(--h-dock));
+  aspect-ratio: 1 / 1;
+  display: grid; place-items: center;
+  background: var(--surface);
+  color: var(--brand);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-btn);
+  transition: background-color var(--dur-micro) var(--ease-out),
+              transform var(--dur-micro) var(--ease-out);
+}
+.iconbtn svg { width: clamp(20px, 6.4vw, 24px); height: clamp(20px, 6.4vw, 24px); }
+.iconbtn:active { transform: translateY(1px); }
+.iconbtn--brand { background: var(--grad-brand); color: var(--on-brand); box-shadow: var(--sh-brand); }
+.iconbtn--danger { color: var(--danger); }
+.iconbtn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* 小号：给页头这类「操作钮不该是页面主角」的地方用（如对话页顶栏的「新建对话」）。
+   取 36px，与 .pill 同高 —— 页头里的图标钮和胶囊几乎总是并排出现，
+   不同高会一眼看出参差。外观其余部分沿用基类。
+   基类最小 46px、最大 60px，放进页头会把视觉重心从内容拉走 —— 那是首页手法。
+   基类用 aspect-ratio 锁 1:1，所以 width 与 height 必须一起给。 */
+.iconbtn--sm {
+  width: var(--h-pill);
+  height: var(--h-pill);
+  min-height: var(--h-pill);
+}
+.iconbtn--sm > svg { width: 20px; height: 20px; }
+
+/* 播报钮：圆形图标钮，两态。
+   **图标两态相同**（都是喇叭），状态改由「实心底 + 扩散波纹」表达 ——
+   换图标会让按钮看起来换了个东西，而这里点前点后是同一件事的开关。
+   **热区与可见形体分开**：可见圆形 --h-pill(36px)，但热区靠 ::before 撑到
+   --h-tap(44px) —— 消息来源行里的钮不该比那行字更抢眼，但 44px 的最小热区
+   是硬要求（§11）。两者用一个伪元素同时满足，不必把圆画大。
+   波纹只在播报态出现，且带传播动效 —— 状态不靠颜色单通道表达（§10）。 */
+.speakbtn {
+  position: relative;
+  width: var(--h-pill); height: var(--h-pill);
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-radius: var(--r-pill);
+  transition: background-color var(--dur-micro) var(--ease-out),
+              color var(--dur-micro) var(--ease-out),
+              transform var(--dur-micro) var(--ease-out);
+}
+.speakbtn::before {
+  content: '';
+  position: absolute; inset: calc((var(--h-pill) - var(--h-tap)) / 2);
+}
+.speakbtn svg { width: 20px; height: 20px; }
+.speakbtn:active { transform: translateY(1px); }
+.speakbtn[data-speaking] {
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  box-shadow: var(--sh-brand);
+}
+/* 波纹：从钮心向外扩散，暗示「正在出声」。
+   用 ::after 加 scale 动画而不是画静态弧 —— 静态弧只是好看，
+   扩散才读得出「进行中」。animation 只在 [data-speaking] 下挂，停止即无。 */
+.speakbtn[data-speaking]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--brand);
+  animation: speakwave 1600ms var(--ease-out) infinite;
+  pointer-events: none;   /* 不挡住本体点击（播报中点它要能停） */
+}
+@keyframes speakwave {
+  0%   { opacity: .55; transform: scale(1); }
+  70%  { opacity: 0;   transform: scale(1.55); }
+  100% { opacity: 0;   transform: scale(1.55); }
+}
+
+/* 快捷提问 chips */
+.chips { display: flex; gap: var(--sp-xs); overflow-x: auto; scrollbar-width: none;
+         padding-bottom: var(--sp-2xs); }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto;
+  min-height: var(--h-tap);
+  display: inline-flex; align-items: center;
+  padding: 0 var(--sp-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  white-space: nowrap;      /* 短标签不折行；配长度约束使用 */
+}
+.chip[aria-pressed="true"], .chip--on {
+  background: var(--brand); border-color: var(--brand); color: var(--on-brand);
+}
+
+/* ==========================================================================
+   D4 · 按钮
+   ========================================================================== */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--sp-xs);
+  min-height: var(--h-control);
+  padding: 0 var(--sp-lg);
+  border-radius: var(--r-pill);
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  text-align: center;
+  white-space: nowrap;
+  transition: background-color var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out),
+              transform var(--dur-micro) var(--ease-out);
+  /* 按钮标签 ≤8 个汉字；超长就换短词，不截断也不折两行 */
+}
+.btn:active { transform: translateY(1px); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.btn--primary { background: var(--brand); color: var(--on-brand); box-shadow: var(--sh-brand); }
+.btn--primary:active { background: var(--brand-deep); }
+.btn--gradient { background: var(--grad-brand); color: var(--on-brand); box-shadow: var(--sh-brand); }
+.btn--ghost { background: var(--surface); color: var(--brand); box-shadow: var(--sh-btn); }
+.btn--quiet { background: var(--brand-soft); color: var(--brand); }
+.btn--danger { background: var(--danger); color: #FFFFFF; }
+.btn--block { display: flex; width: 100%; }
+.btn--sm { min-height: var(--h-pill); padding-inline: var(--sp-md); font-size: var(--text-xs); }
+
+/* 文字动作：视觉轻，热区仍 44px */
+.linklike {
+  display: inline-flex; align-items: center;
+  min-height: var(--h-tap);
+  padding-inline: var(--sp-xs);
+  color: var(--brand);
+  font-size: var(--text-base);
+}
+
+/* 胶囊小按钮（顶栏「切换形象」等） */
+.pill {
+  display: inline-flex; align-items: center; gap: var(--sp-2xs);
+  min-height: var(--h-pill);
+  padding: 0 var(--sp-md);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-btn);
+  font-size: var(--text-xs);
+}
+.pill svg { width: 14px; height: 14px; }
+
+/* ==========================================================================
+   D5 · 行列表（历史对话列表页）
+   ========================================================================== */
+
+.rowlist { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--sh-card);
+           overflow: hidden; }
+.row {
+  width: 100%;
+  display: flex; align-items: center; gap: var(--sp-md);
+  min-height: var(--h-tap);
+  padding: var(--sp-md) var(--sp-lg);
+  text-align: left;
+  color: var(--ink);
+  transition: background-color var(--dur-micro) var(--ease-out);
+}
+.row + .row { border-top: 1px solid var(--line); }
+.row:active { background: var(--mist-1); }
+.row__main { flex: 1 1 auto; min-width: 0; }
+.row__title {
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  /* 标题过长时截断，但列表项高度不定死，大字号下自然长高 */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.row__meta { margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--ink-3); }
+.row__chev { flex: 0 0 auto; color: var(--ink-3); width: 18px; height: 18px; }
+
+/* ==========================================================================
+   D6 · 标签与状态
+   ========================================================================== */
+
+.tag {
+  display: inline-flex; align-items: center; gap: var(--sp-3xs);
+  min-height: 24px;
+  padding: 0 var(--sp-xs);
+  border-radius: var(--r-xs);
+  font-size: var(--text-xs);
+  background: var(--mist-3);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.tag--info   { background: var(--info-soft);   color: var(--info); }
+.tag--ok     { background: var(--ok-soft);     color: var(--ok); }
+.tag--warn   { background: var(--warn-soft);   color: var(--warn); }
+.tag--danger { background: var(--danger-soft); color: var(--danger); }
+/* 状态永远「颜色 + 文字」，关键态另加图标。禁止只用颜色。 */
+
+/* ==========================================================================
+   D7 · 空态 · 骨架 · 提示
+   ========================================================================== */
+
+/* 空态三句：① 空的是什么 ② 为什么会有它 ③ 一个按钮 */
+.empty {
+  padding: var(--sp-2xl) var(--sp-lg);
+  text-align: center;
+  color: var(--ink-3);
+}
+.empty__title { font-size: var(--text-base); color: var(--ink-2); font-weight: var(--w-mid); }
+.empty__hint { margin-top: var(--sp-xs); font-size: var(--text-xs); }
+.empty .btn { margin-top: var(--sp-lg); }
+
+.skeleton {
+  background: var(--mist-3);
+  border-radius: var(--r-sm);
+  min-height: 1em;
+  animation: skeleton 1.4s var(--ease-in-out) infinite;
+}
+@keyframes skeleton { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+/* 反馈条：只在"结果不可见"时用。结果已经看得见就不要弹提示条。
+   **走顶部，不走底部**：本体系的页面底部永远有吸底动作区（对话页输入条、
+   列表页按钮），贴底必与之叠；顶部只需让开安全区（刘海 / 微信导航）就干净了。
+   居中不用 `left:50% + translateX(-50%)`：那对 fixed 元素会把可用宽度压成一半
+   （320px 视口只剩 160px），稍长的文案被迫折行、胶囊形状就散了。
+   改成左右各让开内边距 + 自动外边距居中，宽度由文案决定。 */
+.toast {
+  position: fixed;
+  top: calc(var(--safe-top) + var(--sp-lg));
+  left: var(--pad-start);
+  right: var(--pad-end);
+  margin-inline: auto;
+  width: fit-content;
+  z-index: var(--z-toast);
+  max-width: min(90vw, 30rem);
+  padding: var(--sp-sm) var(--sp-lg);
+  background: var(--ink);
+  color: var(--ink-on-dark);
+  border-radius: var(--r-pill);
+  font-size: var(--text-xs);
+  box-shadow: var(--sh-raise);
+}
+
+/* ==========================================================================
+   D8 · 弹层（确认 / 选择）—— 用原生 dialog
+   ========================================================================== */
+
+dialog.sheet {
+  width: 100%; max-width: var(--w-content);
+  margin: auto auto 0;                 /* 贴底 */
+  padding: var(--sp-lg) var(--pad-end) calc(var(--sp-lg) + var(--pad-bottom)) var(--pad-start);
+  background: var(--surface);
+  color: var(--ink);
+  border: 0;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  box-shadow: var(--sh-sheet);
+}
+dialog.sheet::backdrop { background: var(--overlay); }
+/* 不支持 <dialog> 的老内核（部分微信 X5）走 setAttribute('open') 兜底时，
+   dialog 不会被原生定位，会变成一个页面里的普通块。
+   这条只在**确实不支持**时生效（@supports 判定），支持的原生弹层完全不受影响 ——
+   直接写 dialog[open] 会连现代浏览器一起改掉，那是另一类事故。 */
+@supports not selector(dialog:modal) {
+  dialog.sheet[open] {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: var(--z-sticky);
+    display: block;
+  }
+  dialog.sheet[open]::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    z-index: -1;              /* 遮罩压在弹层之下 */
+  }
+  dialog.sheet[open] > * { position: relative; }   /* 内容抬到遮罩之上 */
+}
+dialog.sheet h2 { font-size: var(--text-md); }
+dialog.sheet p { margin-top: var(--sp-xs); font-size: var(--text-base); color: var(--ink-2); }
+dialog.sheet .cluster { margin-top: var(--sp-lg); }
+dialog.sheet .cluster .btn { flex: 1 1 0; }
+
+/* modal —— 屏幕居中的弹层，与 .sheet 的区别只在位置与圆角：
+   .sheet 从底部升起（`margin: auto auto 0` + 上圆角），适合「就地确认 / 快选」，
+   视线不用离开当前内容；.modal 居中、四角圆，适合「需要专心完成的表单」——
+   登录是打断性任务，居中能让注意力集中，而不像底部弹层那样像顺手一划。
+   两者共用同一套背板、圆角、阴影令牌，不新增颜色尺寸。 */
+dialog.modal {
+  /* position: relative —— 弹层内的绝对定位元素（如 .toast）要拿它当包含块。
+     原生 dialog 默认 static，不写这条，里面的 absolute 会以页面为参照。 */
+  position: relative;
+  width: calc(100% - var(--sp-xl) * 2);
+  max-width: var(--measure);
+  margin: auto;                        /* 居中 */
+  padding: var(--sp-xl) var(--sp-lg) var(--sp-lg);
+  background: var(--surface);
+  color: var(--ink);
+  border: 0;
+  border-radius: var(--r-sheet);
+  box-shadow: var(--sh-raise);
+}
+dialog.modal::backdrop { background: var(--overlay); }
+/* 弹层内的反馈条：**挂在 dialog 内部，但什么都不覆写**。
+   为什么挂在内部：原生 dialog 的 ::backdrop 位于 top layer，任何 z-index
+   都压不过它，页面里那个 .toast 在弹层开启时必然被遮罩盖住；
+   作为 dialog 的后代就同处 top layer，自然浮在其上。
+   为什么不覆写定位：.toast 是 position: fixed，锚的是视口（dialog 没有
+   transform，不影响 fixed），所以在弹层里出现的位置与在页面上完全一致 ——
+   这才叫「位置、样式通用」。改成绝对定位贴弹层顶部会正好压住标题。 */
+dialog.modal h2 { font-size: var(--text-lg); }
+dialog.modal p { margin-top: var(--sp-xs); font-size: var(--text-base); color: var(--ink-2); }
+/* 弹层里的正文行宽收一档：居中容器上过长的说明句会读起来很累 */
+dialog.modal .modal__hint { max-width: var(--measure); }
+dialog.modal .field { margin-top: var(--sp-lg); }
+dialog.modal .cluster { margin-top: var(--sp-lg); }
+dialog.modal .cluster .btn { flex: 1 1 0; }
+
+/* 验证码一行：输入框 + 获取按钮并排。
+   输入框必须 min-width:0 —— flex 项默认 min-width:auto，长 placeholder
+   会把按钮挤出容器（与输入条同一个翻车点，见 .composer__field）。
+
+   高度用 stretch 拉平，**不要给按钮写死高度**：
+   输入框的实际高度不是 --h-input(48)，而是 48 与「内边距 + 行高」取大者 ——
+   16px 正文 × --lh-body(1.7) = 27.2，加 24 内边距与 2 边框得 53px。
+   写死 48 就会差 5px 露出参差，而且字号档位一变还会再错。
+   stretch 让两者都取行内最高者，永远相等。 */
+.authcode { display: flex; align-items: stretch; gap: var(--sp-xs); }
+.authcode .field__input { flex: 1 1 auto; min-width: 0; }
+.authcode .btn { flex: 0 0 auto; }
+
+/* ==========================================================================
+   D9 · 表单
+   ========================================================================== */
+
+.field { display: block; }
+.field__label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  margin-bottom: var(--sp-xs);
+}
+.field__req { color: var(--danger); margin-left: var(--sp-3xs); }
+.field__input {
+  width: 100%;
+  min-height: var(--h-input);
+  padding: var(--sp-sm) var(--sp-md);
+  background: var(--mist-1);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  font-size: var(--text-base);   /* 16px：小于 16px 时 iOS 会自动放大页面 */
+  scroll-margin-block: 40vh;
+}
+.field__input::placeholder { color: var(--ink-3); }
+.field__input:focus-visible { border-color: var(--brand); }
+.field__input[aria-invalid="true"] { border-color: var(--danger); }
+.field__help { margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--ink-3); }
+.field__error {
+  margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--danger);
+  min-height: 1lh;   /* 错误容器不塌陷，出现时不跳版 */
+}
+
+/* ==========================================================================
+   E · 无障碍与动效降级
+   ========================================================================== */
+
+/* 状态切换只改 background-color / border-color / outline-color / transform，
+   不改 border-width（会抖）。 */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 150ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+  }
+  /* 骨架屏去动画保形；波形停在静止图形 */
+  .skeleton { animation: none; opacity: .7; }
+  .wave.is-live i { animation: none; transform: scaleY(.7); }
+  .bubble--typing i { animation: none; opacity: .7; }
+  /* 播报波纹停住：状态仍由实心底 + 停止图标表达，不丢信息 */
+  .speakbtn[data-speaking]::after { animation: none; opacity: .45; transform: none; }
+}
+
+@media (prefers-contrast: more) {
+  .card, .composer__field, .iconbtn, .pill, .rowlist { outline: 1px solid var(--ink); outline-offset: -1px; }
+  .bubble--ai { outline: 1px solid var(--ink); outline-offset: -1px; }
+}
+
+/* 深色下白底素材的遮罩过渡容易发灰，收一点柔光强度 */
+@media (prefers-color-scheme: dark) {
+  .figure::before { opacity: .8; }
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>页面不存在 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   404 · 页面不存在 —— 见 h5v2/DESIGN.md §4.4 状态页
+   骨架：居中的一句话说明 + 一个明确的动作按钮。
+   节奏「居中、单点」：这类页面只做一件事，不加导航、不加推荐。
+
+   不放数字人形象。§4.4 把它列为「可选图形」，但错误码 + 标题 + 说明 + 按钮
+   已经是四块，再加形象就满了 —— 状态页的克制本身就是设计的一部分。
+
+   base.css 没有状态页组件（.empty 是给列表内空数据用的，带 --sp-2xl 上下留白，
+   语义不对），所以这里只写页面级类名，不改组件层。
+   ========================================================================== */
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  /* .h5 已是 min-height:100dvh + flex，.h5__main 是 flex:1 —— 撑满即可垂直居中。
+     不写死高度（§9「避免绝对高度」）。 */
+  min-height: 100%;
+  padding-block: var(--sp-2xl);
+}
+
+.status__code {
+  font-size: var(--text-3xl);
+  font-weight: var(--w-head);
+  line-height: var(--lh-display);
+  color: var(--ink-3);
+}
+
+.status__title {
+  margin-top: var(--sp-xs);
+  font-size: var(--text-xl);
+}
+
+.status__hint {
+  margin-top: var(--sp-sm);
+  /* 说明句按正文行宽收窄，居中时才不会拉成一条长线 */
+  max-width: var(--measure);
+  color: var(--ink-3);
+}
+
+.status .btn { margin-top: var(--sp-xl); }
+</style>
+</head>
+<body>
+
+<div class="h5">
+  <main class="h5__main status">
+
+    <!-- 错误码对读屏用户没有信息量（标题已说清），只是视觉锚点，故对辅助技术隐藏 -->
+    <p class="status__code" aria-hidden="true">404</p>
+
+    <h1 class="status__title">页面不存在</h1>
+    <p class="status__hint">链接可能已经失效，或者地址输错了。</p>
+
+    <a class="btn btn--primary" href="./index.html">回到首页</a>
+
+  </main>
+</div>
+
+</body>
+</html>

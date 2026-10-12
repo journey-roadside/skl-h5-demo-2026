@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>h5v2 规范预览 | 湖北社科数据信息联盟</title>
+<!-- 与业务页面完全相同的引入顺序，本页因此同时是 tokens + base 的集成测试 -->
+<link rel="stylesheet" href="./tokens.css">
+<link rel="stylesheet" href="./base.css">
+<style>
+/* ==========================================================================
+   本页自身的展示层 —— 不属于设计体系，只为把规范摆出来看
+   业务页面不要抄这里的样式
+   ========================================================================== */
+
+body { background: #E9E8F2; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: var(--sp-xl) var(--sp-lg) var(--sp-3xl); }
+
+.masthead { margin-bottom: var(--sp-xl); }
+.masthead h1 { font-size: var(--text-2xl); }
+.masthead p { margin-top: var(--sp-xs); color: var(--ink-2); max-width: 46em; }
+.masthead .meta { margin-top: var(--sp-sm); font-size: var(--text-xs); color: var(--ink-3); }
+
+.block { margin-top: var(--sp-2xl); }
+.block > h2 {
+  font-size: var(--text-lg);
+  padding-bottom: var(--sp-xs);
+  border-bottom: 1px solid var(--mist-5);
+}
+.block > h2 + p { margin-top: var(--sp-xs); font-size: var(--text-xs); color: var(--ink-3); }
+.block__body { margin-top: var(--sp-lg); }
+
+/* 令牌表 */
+.tokgrid { display: grid; gap: var(--sp-sm); grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.tok {
+  background: var(--surface); border-radius: var(--r-md); padding: var(--sp-sm);
+  box-shadow: var(--sh-card);
+}
+.tok__chip { height: 44px; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.tok__name { margin-top: var(--sp-xs); font-size: var(--text-xs); font-weight: var(--w-mid); }
+.tok__val { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+
+/* 字号 / 间距示例 */
+.specrow { display: flex; align-items: baseline; gap: var(--sp-md); padding: var(--sp-xs) 0;
+           border-bottom: 1px solid var(--line); }
+.specrow__key { flex: 0 0 130px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+.bar { height: 12px; background: var(--brand); border-radius: 2px; }
+
+/* 组件展示格 */
+.shelf { display: flex; flex-wrap: wrap; gap: var(--sp-md); align-items: center;
+         background: var(--surface); border-radius: var(--r-card); padding: var(--sp-lg);
+         box-shadow: var(--sh-card); }
+.shelf--col { flex-direction: column; align-items: stretch; }
+.shelf + .shelf { margin-top: var(--sp-md); }
+.shelf__label { flex: 0 0 100%; font-size: var(--text-xs); color: var(--ink-3); }
+.shelf__label:not(:first-child) { margin-top: var(--sp-sm); }
+
+/* 手机仿真框：375×812，内容超出时内部滚动，与真机一致。
+   这是预览页的仿真件；交付页面遵循「避免绝对高度」用 min-height。 */
+.screens { display: flex; flex-wrap: wrap; gap: var(--sp-xl); }
+/* min-width:0 必须写：flex 项的 min-width 默认是 auto，会以 375px 内容宽为下限，
+   在 320px 视口下把整个预览页撑出横向滚动 */
+.screenwrap { flex: 1 1 375px; min-width: 0; max-width: 375px; }
+.screenwrap > h3 { font-size: var(--text-md); margin-bottom: var(--sp-2xs); }
+.screenwrap > p { font-size: var(--text-xs); color: var(--ink-3); margin-bottom: var(--sp-md); }
+.phone {
+  /* 桌面端是精确的 375×812 仿真；窄视口下按容器收缩，保证本页自身不横向溢出 */
+  width: min(375px, 100%); height: 812px;
+  border-radius: 32px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--canvas);
+  box-shadow: 0 12px 40px rgba(30, 27, 51, .20);
+  scrollbar-width: none;
+}
+.phone::-webkit-scrollbar { display: none; }
+/* 仿真框内：100dvh 换成撑满仿真框高度，这样底部条能贴底，与真机一致。
+   --gutter 用 vw 计算，在仿真框里 vw 仍是整个浏览器视口宽度，会偏大；
+   按 375px 屏重设为业务页面的实际值。 */
+.phone { --gutter: 16px; }
+.phone .h5, .phone .docpage { min-height: 100%; }
+.phone .h5__main { padding-bottom: var(--sp-md); }
+
+.toprow { display: flex; justify-content: flex-end; padding: var(--sp-md) var(--pad-end) 0; }
+.listening { display: flex; align-items: center; gap: var(--sp-sm);
+             padding: var(--sp-md) var(--pad-end) 0 var(--pad-start); }
+.bar__title { flex: 1 1 auto; min-width: 0; }
+.bar__title h1 { font-size: var(--text-md); }
+.flowpad { padding-inline: var(--pad-end) var(--pad-start); }
+
+/* 检查清单 */
+.checklist { background: var(--surface); border-radius: var(--r-card); padding: var(--sp-lg);
+             box-shadow: var(--sh-card); }
+.checklist li { display: flex; gap: var(--sp-sm); padding: var(--sp-xs) 0; font-size: var(--text-base);
+                border-bottom: 1px solid var(--line); }
+.checklist li:last-child { border-bottom: 0; }
+.checklist svg { flex: 0 0 auto; width: 18px; height: 18px; color: var(--brand); margin-top: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <h1>微信 H5 设计体系 v2 · 靖紫</h1>
+    <p>冷雾为纸，靖紫为记，数字人是唯一的活物。本页把令牌与组件摆出来，
+       并给出首页与对话页两个装配示例 —— 它同时是 <code>tokens.css</code> 与
+       <code>base.css</code> 的集成测试。</p>
+    <p class="meta">2026-10-11 · v2.4.1 · 湖北社科数据信息联盟（SKLQ2）
+      · 规范正文见 <code>DESIGN.md</code> · 上一版见 <code>../h5v1/</code>（已归档）</p>
+  </div>
+
+  <!-- ================= 色彩 ================= -->
+  <section class="block">
+    <h2>色彩</h2>
+    <p>中性阶全部向品牌色相微着色，没有零彩度灰。危险色独立于品牌色 —— 这是 v1 的缺陷修正。</p>
+    <div class="block__body tokgrid">
+      <div class="tok"><div class="tok__chip" style="background:#F5F4FD"></div>
+        <div class="tok__name">页面底 canvas</div><div class="tok__val">--canvas #F5F4FD</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#FFFFFF"></div>
+        <div class="tok__name">卡片底 surface</div><div class="tok__val">--surface #FFFFFF</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#EDEBFD"></div>
+        <div class="tok__name">品牌柔光 brand-soft</div><div class="tok__val">--brand-soft #EDEBFD</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#5B54E8"></div>
+        <div class="tok__name">品牌主色 brand</div><div class="tok__val">--brand #5B54E8</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#443DD6"></div>
+        <div class="tok__name">按下态 brand-deep</div><div class="tok__val">--brand-deep #443DD6</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#1E1B33"></div>
+        <div class="tok__name">主文字 ink</div><div class="tok__val">--ink #1E1B33</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#7A76A0"></div>
+        <div class="tok__name">说明文字 ink-3</div><div class="tok__val">--ink-3 #7A76A0</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#E4E2F5"></div>
+        <div class="tok__name">分隔线 line</div><div class="tok__val">--line #E4E2F5</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#D93A34"></div>
+        <div class="tok__name">危险 danger</div><div class="tok__val">--danger #D93A34</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#2F8F63"></div>
+        <div class="tok__name">通过 ok</div><div class="tok__val">--ok #2F8F63</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#B5761F"></div>
+        <div class="tok__name">待办 warn</div><div class="tok__val">--warn #B5761F</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#2C63C7"></div>
+        <div class="tok__name">信息 info</div><div class="tok__val">--info #2C63C7</div></div>
+    </div>
+  </section>
+
+  <!-- ================= 渐变 ================= -->
+  <section class="block">
+    <h2>渐变 · 只有四处</h2>
+    <p>渐变是当前 AI 生成物的头号识别特征。本体系把它锁死在四个具名用途上，正文区与数据区永不使用。</p>
+    <div class="block__body tokgrid">
+      <div class="tok"><div class="tok__chip" style="background:linear-gradient(180deg,#E7E4FB 0%,#F5F4FD 62%,#F5F4FD 100%)"></div>
+        <div class="tok__name">首屏顶部过渡</div><div class="tok__val">--grad-hero</div></div>
+      <div class="tok"><div class="tok__chip" style="background:linear-gradient(150deg,#8B7CF6 0%,#4F46E5 100%)"></div>
+        <div class="tok__name">用户气泡 / 品牌按钮</div><div class="tok__val">--grad-brand</div></div>
+      <div class="tok"><div class="tok__chip" style="background:linear-gradient(180deg,#8B7CF6 0%,#4F46E5 100%)"></div>
+        <div class="tok__name">语音波形</div><div class="tok__val">--grad-wave</div></div>
+      <div class="tok"><div class="tok__chip" style="background:radial-gradient(58% 46% at 50% 40%,rgba(139,124,246,.34) 0%,rgba(139,124,246,0) 72%),#F5F4FD"></div>
+        <div class="tok__name">形象背后光晕</div><div class="tok__val">--grad-aura</div></div>
+    </div>
+  </section>
+
+  <!-- ================= 排版与尺度 ================= -->
+  <section class="block">
+    <h2>排版与尺度</h2>
+    <p>单一 ≈1.25 比例，单页最多 5 级字号。间距与固定几何一律 px（微信官方要求间距不随字号缩放）。</p>
+    <div class="block__body">
+      <div class="specrow"><span class="specrow__key">--text-2xl 34</span><span class="t-display">页面标题</span></div>
+      <div class="specrow"><span class="specrow__key">--text-xl 28</span><span class="t-title">区块标题</span></div>
+      <div class="specrow"><span class="specrow__key">--text-lg 22</span><span class="t-lg">卡片标题 / 问候语</span></div>
+      <div class="specrow"><span class="specrow__key">--text-base 16</span><span class="t-body">正文与对话气泡都停在这一级</span></div>
+      <div class="specrow"><span class="specrow__key">--text-xs 13</span><span class="t-xs">标签 / 时间 / 合规行，不承担阅读</span></div>
+
+      <div class="specrow"><span class="specrow__key">--sp-md 16</span><span class="bar" style="width:16px"></span></div>
+      <div class="specrow"><span class="specrow__key">--sp-lg 24</span><span class="bar" style="width:24px"></span></div>
+      <div class="specrow"><span class="specrow__key">--sp-para 36</span><span class="bar" style="width:36px"></span></div>
+      <div class="specrow"><span class="specrow__key">--sp-3xl 64</span><span class="bar" style="width:64px"></span></div>
+
+      <div class="specrow"><span class="specrow__key">--r-card 20px</span>
+        <span style="width:64px;height:40px;border-radius:var(--r-card);background:var(--brand-soft);border:1px solid var(--brand)"></span>
+        <span class="t-xs">卡片圆角</span></div>
+      <div class="specrow"><span class="specrow__key">--sh-card</span>
+        <span style="width:64px;height:40px;border-radius:var(--r-md);background:#fff;box-shadow:var(--sh-card)"></span>
+        <span class="t-xs">带品牌色相的柔光，不是中性黑</span></div>
+      <div class="specrow"><span class="specrow__key">--h-tap 44px</span>
+        <span style="width:44px;height:44px;border-radius:var(--r-sm);background:var(--mist-3);border:1px dashed var(--brand)"></span>
+        <span class="t-xs">最小热区，全站可点元素不得低于此</span></div>
+    </div>
+  </section>
+
+  <!-- ================= 组件 ================= -->
+  <section class="block">
+    <h2>组件</h2>
+    <p>全部由 <code>base.css</code> 提供。交互元素实现 default / hover / focus-visible / active / disabled 五态。</p>
+
+    <div class="block__body">
+      <div class="shelf">
+        <span class="shelf__label">按钮</span>
+        <button class="btn btn--primary">开始提问</button>
+        <button class="btn btn--gradient">新建对话</button>
+        <button class="btn btn--ghost">查看全部</button>
+        <button class="btn btn--quiet">换一批</button>
+        <button class="btn btn--danger">删除对话</button>
+        <button class="btn btn--primary" disabled>不可用</button>
+      </div>
+
+      <div class="shelf">
+        <span class="shelf__label">胶囊 · 标签 · 状态（状态永远「颜色 + 文字」，关键态另加图标）</span>
+        <button class="pill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 8h11M4 16h7"/><path d="M17 5l3 3-3 3M13 13l3 3-3 3"/></svg>
+          切换形象
+        </button>
+        <span class="tag">默认标签</span>
+        <span class="tag tag--info">研究中</span>
+        <span class="tag tag--ok">已生成</span>
+        <span class="tag tag--warn">待确认</span>
+        <span class="tag tag--danger">已删除</span>
+      </div>
+
+      <div class="shelf">
+        <span class="shelf__label">快捷提问 chips</span>
+        <span class="chips" style="max-width:100%">
+          <button class="chip chip--on">热门问题</button>
+          <button class="chip">长江经济带</button>
+          <button class="chip">智库报告</button>
+          <button class="chip">专家名录</button>
+        </span>
+      </div>
+
+      <div class="shelf">
+        <span class="shelf__label">圆形操作钮 · 语音波形（静止态不空转）</span>
+        <button class="iconbtn" aria-label="录音提问">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+            <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <button class="iconbtn iconbtn--brand" aria-label="键盘输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+        </button>
+        <span class="wave is-live" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <span class="t-brand">正在播报</span>
+      </div>
+
+      <div class="shelf shelf--col">
+        <span class="shelf__label">对话气泡 · 生成中 · 来源标注（AI 回答必须可核查）</span>
+        <p class="bubble bubble--user" style="max-width:84%">长江经济带的区域协调发展，有哪些代表性研究成果？</p>
+        <div class="bubble bubble--ai" style="max-width:84%">
+          已按「智库报告 / 学术论文 / 政策解读」分类梳理，共 47 条。
+          <span class="bubble__src">来源：联盟成果库</span>
+        </div>
+        <div class="bubble bubble--ai bubble--typing" style="width:max-content" role="status" aria-label="正在生成回答">
+          <i></i><i></i><i></i>
+        </div>
+      </div>
+
+      <div class="shelf shelf--col">
+        <span class="shelf__label">列表 · 卡片（卡中卡允许，内层降级为无阴影浅底）</span>
+        <div class="rowlist">
+          <button class="row">
+            <span class="row__main">
+              <span class="row__title">长江经济带的代表性研究成果</span>
+              <span class="row__meta">今天 14:06 · 6 条消息</span>
+            </span>
+            <svg class="row__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button class="row">
+            <span class="row__main">
+              <span class="row__title">湖北智库名录里研究乡村振兴的专家</span>
+              <span class="row__meta">昨天 09:21 · 4 条消息</span>
+            </span>
+            <svg class="row__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="card">
+          <p class="t-md">卡片的正文</p>
+          <div class="card__inset" style="margin-top:12px">
+            <p class="t-xs">卡内嵌套：换浅雾底、去阴影，避免两层阴影打架</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="shelf shelf--col">
+        <span class="shelf__label">空态（三句式：空的是什么 / 为什么会有它 / 一个按钮）</span>
+        <div class="empty">
+          <p class="empty__title">还没有对话记录</p>
+          <p class="empty__hint">你提过的问题会保存在这里，方便回头继续。</p>
+          <button class="btn btn--primary">开始提问</button>
+        </div>
+      </div>
+
+      <div class="shelf shelf--col">
+        <span class="shelf__label">表单（输入框 16px，错误容器不塌陷）</span>
+        <div class="field">
+          <label class="field__label" for="demo-name">机构名称<span class="field__req" aria-hidden="true">*</span></label>
+          <input class="field__input" id="demo-name" required placeholder="请填写全称">
+          <p class="field__help">与营业执照一致，用于备案。</p>
+        </div>
+        <div class="field" style="margin-top:16px">
+          <label class="field__label" for="demo-bad">联系邮箱</label>
+          <input class="field__input" id="demo-bad" aria-invalid="true" aria-describedby="demo-bad-err" value="name@">
+          <p class="field__error" id="demo-bad-err">邮箱格式不完整。缺少 @ 后的域名。请补全后重试。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 页面装配示例 ================= -->
+  <section class="block">
+    <h2>页面装配示例</h2>
+    <p>同一套令牌与组件，两种职责：首页用大形象建立关系，对话页缩为顶栏头像把屏幕让给内容。
+       下面两个框是 375×812 仿真件，内容超出时内部滚动。</p>
+
+    <div class="block__body screens">
+
+      <!-- 首页 -->
+      <div class="screenwrap">
+        <h3>首页 · Companion-Hero</h3>
+        <p>形象占屏约 40%，与问候、收音状态、底部两个圆钮构成首屏</p>
+        <div class="phone">
+          <div class="h5">
+            <main class="h5__main">
+              <div class="toprow">
+                <button class="pill">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M4 8h11M4 16h7"/><path d="M17 5l3 3-3 3M13 13l3 3-3 3"/></svg>
+                  切换形象
+                </button>
+              </div>
+
+              <div class="figure">
+                <img class="figure__img" src="assets/avatars/avatar-02.png"
+                     alt="数字人助手形象" width="300" height="400" fetchpriority="high">
+              </div>
+
+              <div class="greet">
+                <p class="greet__hi">你好，今天想聊点什么</p>
+                <p class="greet__sub">社科数据、专家名录，都可以问我</p>
+              </div>
+
+              <div class="listening">
+                <span class="wave is-live" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                <span class="t-brand">我在听，你说</span>
+              </div>
+            </main>
+
+            <div class="composer" style="justify-content:center">
+              <div class="dock">
+                <button class="iconbtn" aria-label="录音提问">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <button class="iconbtn" aria-label="键盘输入">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对话页 -->
+      <div class="screenwrap">
+        <h3>对话页 · Companion-Chat</h3>
+        <p>形象缩为顶栏 44px 头像；空态给欢迎卡，有消息后让位给对话流</p>
+        <div class="phone">
+          <div class="docpage">
+            <div class="docpage__bar">
+              <span class="figure figure--dock">
+                <img class="figure__img" src="assets/avatars/avatar-02.png" alt="" width="44" height="44">
+              </span>
+              <span class="bar__title"><h1>社科数据助手</h1></span>
+              <button class="pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
+                历史
+              </button>
+            </div>
+
+            <div class="docpage__flow">
+              <div class="herocard">
+                <div class="herocard__body">
+                  <p class="herocard__hi">你好，我是社科数据助手</p>
+                  <p class="herocard__title">查数据、找专家、读成果</p>
+                  <div class="herocard__cta">
+                    <button class="btn btn--gradient btn--sm">试试检索成果</button>
+                  </div>
+                </div>
+                <div class="herocard__figure">
+                  <img class="figure__img" src="assets/avatars/avatar-02.png" alt="" width="120" height="132">
+                </div>
+              </div>
+
+              <div class="chips">
+                <button class="chip">长江经济带研究</button>
+                <button class="chip">智库报告 2026</button>
+                <button class="chip">乡村振兴专家</button>
+              </div>
+
+              <p class="bubble bubble--user">长江经济带的区域协调发展，有哪些代表性研究成果？</p>
+
+              <div class="bubble bubble--ai">
+                已按「智库报告 / 学术论文 / 政策解读」分类梳理，共 47 条，每条标注来源单位与年份。
+                <span class="bubble__src">来源：联盟成果库</span>
+              </div>
+
+              <p class="bubble bubble--user">其中省社科院的有哪些？</p>
+
+              <div class="bubble bubble--ai bubble--typing" style="width:max-content"
+                   role="status" aria-label="正在生成回答">
+                <i></i><i></i><i></i>
+              </div>
+            </div>
+
+            <p class="aiflag">内容由 AI 生成，请注意甄别</p>
+
+            <div class="docpage__foot">
+              <div class="composer" data-composer id="demo-composer">
+                <!-- 左：模式切换。图标表「下一步动作」（键盘态显麦克风 / 录音态显键盘），
+                     aria-label 说的是同一件事，不互相打架 -->
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+
+                <!-- 右 · 键盘态。发送钮在输入框内部最右 -->
+                <div class="composer__field">
+                  <input type="text" placeholder="有什么想了解的，问我" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn disabled aria-label="发送">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+
+                <!-- 右 · 录音态 -->
+                <button class="composer__rec" type="button" data-rec="off" data-rec-btn
+                        aria-pressed="false">点击开始录音</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输入组件单列出来看：三态并排 -->
+      <div class="screenwrap" style="max-width:100%; flex-basis:100%">
+        <h3>输入组件 · 键盘 / 录音两态</h3>
+        <p>左侧按钮切换模式，右侧随模式换形态。下方四个是真组件，可点着试 ——
+           录音为纯模拟，不调用麦克风，任何机器都能演示。</p>
+        <p><strong>左钮的图标表「按下去会得到什么」，不是「现在是什么模式」</strong>：
+           键盘态显示麦克风（点了去录音），录音态显示键盘（点了回打字）。
+           显示当前模式在纸面上也说得通，但会造成实际困惑 —— 输入条里摆个键盘图标，
+           用户会以为「点它是唤起键盘」，而它其实会把输入框收走切到录音。</p>
+        <p><strong>发送钮三态由 <code>data-send</code> 驱动，外观全在 CSS 里</strong>：
+           无值 = 置灰箭头不可点；<code>ready</code> = 点亮可发；<code>stop</code> = 实心方块可中断。
+           停止态优先于输入内容 —— 生成中即使框里有字，按钮也该是「停止」，
+           否则用户没法中断一个跑歪的回答。录音态整钮收起（没有键盘发送的语义）。</p>
+        <div style="display:flex; flex-wrap:wrap; gap:var(--sp-xl);">
+          <div style="flex:1 1 340px; min-width:0; max-width:375px;">
+            <p class="t-xs" style="margin-bottom:8px;">① 键盘态 · 未输入：右钮置灰箭头，不可点</p>
+            <div style="background:var(--canvas); border-radius:var(--r-card); box-shadow:var(--sh-card); padding-bottom:8px;">
+              <div class="composer" data-composer>
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <div class="composer__field">
+                  <input type="text" placeholder="有什么想了解的，问我" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn disabled aria-label="发送">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <button class="composer__rec" type="button" data-rec="off" data-rec-btn
+                        aria-pressed="false">点击开始录音</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1 1 340px; min-width:0; max-width:375px;">
+            <p class="t-xs" style="margin-bottom:8px;">② 键盘态 · 已输入：右钮点亮，可发送</p>
+            <div style="background:var(--canvas); border-radius:var(--r-card); box-shadow:var(--sh-card); padding-bottom:8px;">
+              <div class="composer" data-composer>
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <div class="composer__field">
+                  <input type="text" value="智库报告有哪些" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn data-send="ready" aria-label="发送">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <button class="composer__rec" type="button" data-rec="off" data-rec-btn
+                        aria-pressed="false">点击开始录音</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1 1 340px; min-width:0; max-width:375px;">
+            <p class="t-xs" style="margin-bottom:8px;">③ 键盘态 · 生成中：右钮转实心方块，可停止</p>
+            <div style="background:var(--canvas); border-radius:var(--r-card); box-shadow:var(--sh-card); padding-bottom:8px;">
+              <div class="composer" data-composer>
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <div class="composer__field">
+                  <input type="text" placeholder="有什么想了解的，问我" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn data-send="stop"
+                          aria-label="停止生成">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <button class="composer__rec" type="button" data-rec="off" data-rec-btn
+                        aria-pressed="false">点击开始录音</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1 1 340px; min-width:0; max-width:375px;">
+            <p class="t-xs" style="margin-bottom:8px;">④ 录音态 · 待开始：左键盘图标，右「点击开始录音」</p>
+            <div style="background:var(--canvas); border-radius:var(--r-card); box-shadow:var(--sh-card); padding-bottom:8px;">
+              <div class="composer" data-composer data-mode="voice">
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <div class="composer__field">
+                  <input type="text" placeholder="有什么想了解的，问我" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn disabled aria-label="发送">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <button class="composer__rec" type="button" data-rec="off" data-rec-btn
+                        aria-pressed="false">点击开始录音</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1 1 340px; min-width:0; max-width:375px;">
+            <p class="t-xs" style="margin-bottom:8px;">⑤ 录音态 · 录音中：右按钮转实心，文案变「点击结束录音」</p>
+            <div style="background:var(--canvas); border-radius:var(--r-card); box-shadow:var(--sh-card); padding-bottom:8px;">
+              <div class="composer" data-composer data-mode="voice">
+                <button class="iconbtn composer__mode" type="button" data-mode-toggle>
+                  <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+                    <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+                  <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                       stroke-linecap="round" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                </button>
+                <div class="composer__field">
+                  <input type="text" placeholder="有什么想了解的，问我" aria-label="输入你的问题">
+                  <button class="iconbtn composer__send" type="button" data-send-btn disabled aria-label="发送">
+                    <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+                  </button>
+                </div>
+                <button class="composer__rec" type="button" data-rec="on" data-rec-btn
+                        aria-pressed="true">点击结束录音</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 交付前检查 ================= -->
+  <section class="block">
+    <h2>交付前检查</h2>
+    <p>这些是这套体系里最容易漏、且漏了会真出问题的地方。</p>
+    <div class="block__body checklist">
+      <ul>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>用的是 <code>h5v2</code> 的 tokens，不是 <code>h5v1</code>；页面里没有裸色值、裸字号、裸间距</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>颜色没有用 <code>oklch()</code> / <code>color-mix()</code> —— 微信 Android 旧内核不认，会静默失效</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>渐变只出现在 DESIGN.md §1.2 的四个位置，正文与数据区是纯色底</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>对话页有「内容由 AI 生成，请注意甄别」；涉及数据与成果的回答带来源</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>320px 视口下无横向滚动；底部圆钮与 chips 都放得下</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>没有写死 <code>height</code> 的内容容器；页面用 <code>100dvh</code> 不是 <code>100vh</code></span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>底部固定条带 <code>--pad-bottom</code> 安全区；输入框带 <code>scroll-margin-block</code></span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>可点元素热区 ≥44px；焦点环静态出现；键盘可操作全部交互</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span><code>prefers-reduced-motion</code> 下波形停住、骨架保形</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>形象素材是透明底 WebP 且已获授权；数字人播报由用户手势触发，不自动出声</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>微信「设置 → 通用 → 字体大小」第 6 档与最大档各看过一次，重点看顶栏、chips、输入条、气泡</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>
+          <span>iOS 与 Android 各做过一次真机验收，覆盖 iPhone SE 与安卓小屏机</span></li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ==========================================================================
+   输入条的两态交互 —— 键盘态 / 录音态
+   纯模拟：不调用 getUserMedia，不申请麦克风权限。
+   演示站要能在任何机器、任何协议下跑，权限弹窗是会翻车的东西。
+
+   状态机
+     键盘态 ──点左侧──▶ 录音待开始 ──点右侧──▶ 录音中 ──点右侧──▶ 识别中 ──▶ 键盘态
+        ▲                                                              │
+        └──────────────────────点左侧（随时可切回）─────────────────────┘
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  var RECOGNIZED = '长江经济带的区域协调发展，有哪些代表性研究成果？';
+  var RECOGNIZE_MS = 1200;   /* 模拟识别耗时 */
+
+  /* 演示站没有真的对话流，所以「生成中」由这个假计时器撑着，
+     让发送钮的第三态在展示页里能真的被点出来。 */
+  var SEND_MS = 2600;
+
+  document.querySelectorAll('[data-composer]').forEach(function (composer) {
+    var modeBtn = composer.querySelector('[data-mode-toggle]');
+    var recBtn  = composer.querySelector('[data-rec-btn]');
+    var sendBtn = composer.querySelector('[data-send-btn]');
+    var input   = composer.querySelector('.composer__field input');
+    if (!modeBtn || !recBtn || !input) return;
+
+    /* 每页/每示例独立状态 —— 五个并排的示例互不干扰。
+       初始态从 DOM 读，不写死：并排示例里有「已输入」「生成中」「录音中」
+       的静态展示，写死初值会把它们重置掉，与页面标注的状态说明不符。 */
+    var mode = composer.getAttribute('data-mode') === 'voice' ? 'voice' : 'keyboard';
+    var rec  = recBtn.getAttribute('data-rec') === 'on' ? 'on' : 'off';
+    var busy = sendBtn ? sendBtn.getAttribute('data-send') === 'stop' : false;
+    var timer = null;
+    var sendTimer = null;
+
+    /* 发送钮三态。与 chat.html 里同名的那个函数口径一致 ——
+       停止态优先于输入内容，录音态整钮收起。 */
+    function renderSend() {
+      if (!sendBtn) return;
+      sendBtn.hidden = mode !== 'keyboard';
+      sendBtn.disabled = busy ? false : input.value.trim() === '';
+      if (busy) {
+        sendBtn.setAttribute('data-send', 'stop');
+        sendBtn.setAttribute('aria-label', '停止生成');
+      } else {
+        if (input.value.trim() !== '') sendBtn.setAttribute('data-send', 'ready');
+        else sendBtn.removeAttribute('data-send');
+        sendBtn.setAttribute('aria-label', '发送');
+      }
+    }
+
+    function render() {
+      composer.setAttribute('data-mode', mode);
+
+      /* 图标表「下一步动作」，aria-label 说同一件事 —— 两者不再一个说模式、
+         一个说动作。读屏用户听到「切换到语音录入」时，看到的也正是麦克风。 */
+      modeBtn.setAttribute('aria-label', mode === 'voice' ? '切换到键盘输入' : '切换到语音录入');
+
+      /* 文案按状态一次写全 —— 若只在录音态赋值，识别完回到键盘态会留下
+         「正在识别…」的残留文案（按钮虽隐藏，但状态不干净）。 */
+      recBtn.textContent = rec === 'busy' ? '正在识别…'
+                         : rec === 'on'   ? '点击结束录音'
+                         :                  '点击开始录音';
+      recBtn.setAttribute('data-rec', rec === 'on' ? 'on' : 'off');
+      recBtn.setAttribute('aria-pressed', String(rec === 'on'));
+      recBtn.disabled = (rec === 'busy');
+      if (rec === 'busy') recBtn.setAttribute('aria-busy', 'true');
+      else recBtn.removeAttribute('aria-busy');
+
+      renderSend();
+    }
+
+    /* 左：切模式。切走时把录音态收干净，避免留下一个"录着"的按钮 */
+    modeBtn.addEventListener('click', function () {
+      if (timer) { clearTimeout(timer); timer = null; }
+      rec = 'off';
+      mode = (mode === 'voice') ? 'keyboard' : 'voice';
+      render();
+      /* 回到键盘态时把光标送回输入框 —— 已输入的文字不丢，继续打 */
+      if (mode === 'keyboard') input.focus();
+    });
+
+    /* 右：录音开关。点一下开始，再点一下结束 → 识别中 → 转文字填入输入框 */
+    recBtn.addEventListener('click', function () {
+      if (rec === 'busy') return;
+
+      if (rec === 'off') {
+        rec = 'on';
+        render();
+        return;
+      }
+
+      /* 结束录音 → 识别中 */
+      rec = 'busy';
+      render();
+
+      timer = setTimeout(function () {
+        timer = null;
+        /* 转成文字填入输入框，自动回键盘态让用户确认或修改。
+           演示站每次填同一句预设文案；接真实 ASR 时替换这一行即可。 */
+        input.value = RECOGNIZED;
+        mode = 'keyboard';
+        rec = 'off';
+        render();
+        input.focus();
+        /* 光标置于末尾，方便直接改 */
+        input.setSelectionRange(input.value.length, input.value.length);
+      }, RECOGNIZE_MS);
+    });
+
+    /* 输入内容变化即时反映到发送钮。用 input 事件，粘贴与输入法上屏都覆盖得到。 */
+    if (sendBtn) {
+      input.addEventListener('input', renderSend);
+
+      /* 一个钮两种职责：生成中点击 = 停止，否则 = 发送（演示站只做状态演示） */
+      sendBtn.addEventListener('click', function () {
+        if (busy) {
+          clearTimeout(sendTimer);
+          sendTimer = null;
+          busy = false;
+        } else {
+          if (input.value.trim() === '') return;
+          busy = true;
+          clearTimeout(sendTimer);
+          sendTimer = setTimeout(function () {
+            sendTimer = null;
+            busy = false;
+            renderSend();
+          }, SEND_MS);
+        }
+        renderSend();
+      });
+    }
+
+    render();
+  });
+})();
+</script>
+</body>
+</html>

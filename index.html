@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>数字人对话 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   首页 · Companion-Hero —— 见 h5v2/DESIGN.md §4.1
+   骨架：顶部切换形象 → 数字人形象位 → 问候语 → 收音波形 →
+         对话示例（用户气泡 / AI 气泡）→ AI 标识合规行 → 底部圆形操作区
+
+   本文件只写结构与页面级变体类，不覆写 base.css 的组件样式（§12）。
+   气泡、来源标注、AI 标识三个组件来自 base.css D3，此处只给它们一个纵向栈。
+   ========================================================================== */
+
+/* 隐藏滚动条，但保留滚动能力。
+   移动端本来不画滚动条，这里只处理桌面浏览器预览与部分安卓 WebView
+   （Chromium 会在右侧画一条常驻条，截图与真机观感都对不上）。
+   注意不是 overflow: hidden —— 那会把滚动一起禁掉，
+   也是体系 §11 明令禁止的横向溢出兜底写法。
+   微信 X5 是 Chromium 内核走 ::-webkit-scrollbar，Firefox 走 scrollbar-width。 */
+html {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* 旧 Edge / IE 内核 */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 顶部雾光铺在 body 上，由画布铺满整个视口宽度。
+   不能画在 .home 上：.h5 有 max-inline-size: var(--w-content)（640px），
+   宽屏下正文列居中，画在列上则两侧露出 body 的纯底色 --canvas，
+   看起来就是"左右两片空白"。铺到 body 后，任何宽度下渐变都连续。
+   微信内视口本来就窄于 640px，效果与改动前一致。
+   形象背后那圈品牌柔光由 base.css 的 .figure::before 提供，
+   这里不叠 --grad-aura，否则同一处渐变会重影。 */
+body {
+  background: var(--grad-hero);
+}
+
+.home__main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--sp-md);
+  /* 内容超出视口时整页滚动（§9「页面必须能滚」），不做固定高度 */
+}
+
+/* 顶部工具行：切换形象。这里不重绘微信导航栏，只是一个页内动作。 */
+.toprow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 主体内容在「胶囊以下、按钮以上」的剩余空间里垂直居中。
+   用前后两个弹性占位实现，而不是 justify-content: center ——
+   居中溢出是双向的，内容高于容器时顶部会被推出视口且永远滚不到。
+   弹性占位在空间不足时收缩为 0，内容自然从顶部开始并正常滚动。 */
+.home__stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.home__stage::before,
+.home__stage::after {
+  content: "";
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* 形象位：固定几何舞台（§9.1 允许写死的场景之一）。
+   高度是「视口扣掉其余全部内容」后的剩余量：
+     578px = 页面内边距 + 顶部胶囊 + 问候语 + 收音行 + 对话示例 + 合规行
+           + 底部按钮让位（实测值，改文案后需重新实测）
+   宽屏/高屏时撑到基准 286px（--figure-hero）；矮屏先压形象，
+   压到 190px 为止，再不够才整页滚动。这样首屏始终是「一屏叙事」。 */
+.figure--hero {
+  max-width: 300px;   /* 固定几何：避免平板宽度下形象被拉成巨幅 */
+  margin: var(--sp-sm) auto 0;
+  height: clamp(190px, calc(100dvh - 578px), var(--figure-hero));
+  /* 行高必须显式定为容器高。
+     .figure 是 grid，隐式行高为 auto 时会被图片内容撑到 300px，
+     于是 .figure__img 的 max-height:100% 解析成 300 而不是舞台高度，
+     图片溢出、顶部被裁（实测裁掉 66px，正好切到头顶）。
+     定为 100% 后图片按舞台高度等比缩放，不再溢出。 */
+  grid-template-rows: 100%;
+}
+
+/* 问候语居中：首页是「建立关系」的场景，不是信息列表，
+   居中的问候与形象位共用同一条中轴，视线不用左右找对齐线。 */
+.home__greet {
+  padding-top: var(--sp-md);
+  text-align: center;
+}
+
+/* 收音状态行：波形 + 一句状态文字，作为整体居中。
+   波形只在真正收音时动（§8），静止态是静态图形，不空转。 */
+.listening {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  padding-top: var(--sp-md);
+}
+.listening__text {
+  font-size: var(--text-base);
+  color: var(--ink-3);
+  /* 文案颜色跟着状态走，过渡只动 color（§8 只动 transform/opacity 的补充：
+     颜色过渡属于允许的「背景色/边框色过渡」同类，不引起重排） */
+  transition: color var(--dur-short) var(--ease-out);
+}
+/* 未收音时是灰色动作提示；收音中转为品牌色，与波形、按钮同步 */
+.listening__text.is-live {
+  color: var(--brand);
+}
+
+/* 对话流容器。base.css 有气泡本身，但没有给它们一个纵向栈，
+   这里是页面级结构类，数值全部走令牌。 */
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-md);
+  padding-top: var(--sp-lg);
+}
+
+/* 底部圆形操作区：浮动固定在视口底部，内容从下方穿过。
+   用 fixed 而非 sticky —— sticky 要有个滚动祖先才粘得住，
+   这里内容居中后整页可能不滚，sticky 就浮不起来了。
+   文字色与阴影已由 base.css 的 .iconbtn 提供，不覆写。 */
+.dock--float {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+  display: none;          /* 默认藏起，微信端由 .is-wx 换回来 */
+}
+
+/* ==========================================================================
+   底部动作区：按环境二选一
+   ==========================================================================
+   微信端：录音 · 键盘两个图标钮 —— 语音与身份都由微信提供。
+   非微信：整组换成「立即对话」。两个钮都要靠微信（语音入口、登录），
+           留着也点不动，不如换成一个能用的。
+
+   **默认（无 JS、无类名）显示哪一个**：先给「非微信」是保守选择 ——
+   非微信下显示可用入口，总好过微信下露出两个会弹登录框的钮；
+   而微信端脚本一定会跑（不然整个页面都不工作），跑起来就切过去。
+   若脚本没跑，微信端会看到「立即对话」，仍可用，只是少了语音入口。 */
+.dock-cta {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--h-control);
+  padding: 0 var(--sp-2xl);
+  border-radius: var(--r-pill);
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  white-space: nowrap;
+  box-shadow: var(--sh-brand);
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+.dock-cta:active { transform: translateX(-50%) translateY(1px); }
+/* 按钮不该有链接的下划线。base.css 给 a:hover 加了 text-decoration: underline，
+   那是给正文里的链接用的；这里是按钮形态，覆写掉。 */
+.dock-cta,
+.dock-cta:hover { text-decoration: none; }
+
+/* 收音状态行（波形 + 「点按开始说话」）整块只在微信端出现：
+   非微信端没有语音入口（底部已换成「立即对话」），留一行「点按开始说话」
+   会指着一个不存在的动作。默认隐藏，微信端由 .is-wx 放出来。 */
+.listening { display: none; }
+.is-wx .listening { display: flex; }
+
+/* ==========================================================================
+   扫码引导弹层 —— 定死 300×300，不做任何响应式
+   ==========================================================================
+   尺寸写死是刻意的例外：这张弹窗在演示里要出现在各种截图中，
+   「每个视口长得都一样」比「随屏幕自适应」更重要。
+   注意与体系「避免绝对高度」（§9）的冲突 —— 那条针对的是**页面容器**，
+   弹窗是固定几何控件，属于官方允许的豁免（同 §9.1 的形象位）。
+
+   300×300 装不下「标题 + 大二维码 + 取消钮」三件，
+   必须收掉一样。这里收了边距与二维码，而不是删取消钮 ——
+   二维码天然不会被「看到一个就够」，多留 15px 的实际扫码距离影响极小，
+   而少一个关闭按钮就是硬伤。
+
+   选择器写成 dialog.modal.qrsheet 而不是单个 .qrsheet：
+   base.css 里 dialog.modal 的特异性是 (0,1,1)，比单类名的 (0,1,0) 高，
+   不叠一层就会被它的 width / max-width / padding 静默盖掉（本页踩过一次）。 */
+dialog.modal.qrsheet {
+  width: 300px;
+  height: 300px;
+  max-width: none;
+  box-sizing: border-box;
+  /* 竖向排布 + 把内容摊开：标题在上、二维码居中、取消钮贴底 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-md);
+  /* 整层文字居中：.modal 是屏幕居中的陈列式弹层，标题左对齐会显得偏。
+     二维码本身也是居中元素，整体一条中轴。 */
+  text-align: center;
+}
+
+/* dialog 未打开时必须真正消失。
+   原生 dialog 默认 `display: none`，但上面给 `dialog.modal.qrsheet` 写了
+   `display: flex` —— 那条**特异性更高**，把 UA 的隐藏盖掉了，
+   于是这个弹层在关闭状态下依然渲染成页面里的一块内容（微信端「滑动可见」
+   就是这个原因）。补一条同特异性的规则把它按回 none。
+   `[open]` 的 (0,2,1) > 这里 (0,2,1) 且后写，所以打开时仍正常显示。 */
+dialog.modal.qrsheet:not([open]) { display: none; }
+
+/* 标题弱化：这一屏的主角是二维码，标题只是一行注解。
+   用 --text-base(16) —— 比二维码低一个量级，也与正文同级，不再抢眼。
+   说明句已移除 —— 标题本身「手机扫码体验更好」已经说完了。
+   nowrap：定死尺寸后标题若折行会顶掉下面的二维码。 */
+dialog.modal.qrsheet h2 {
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.qrbox {
+  display: grid;
+  place-items: center;
+  min-height: 0;         /* 允许在 flex 列里收缩，否则会把取消钮挤出去 */
+}
+/* 二维码：定死尺寸容器下的确定性取值。
+   300 − 上下内边距(16×2) − 标题行(约 24) − 取消钮(44) − 两段间隙 ≈ 186。 */
+.qrbox img {
+  width: 180px;
+  height: 180px;
+  padding: var(--sp-2xs);
+  background: #FFFFFF;   /* 二维码必须压白底，深色下不加白底会与深底糊在一起 */
+  border-radius: var(--r-sm);
+}
+/* 取消钮：底部居中。
+   原先是白底 + 品牌色图标，在同样偏白的弹层面板上几乎看不出是个按钮
+   （用户反馈「不够明显」）。改成品牌柔光底 + 品牌色图标 ——
+   有了可辨的底，「这是个能按的东西」才立得住；
+   仍是次级观感（不是实心主色），不会抢走二维码的注意力。 */
+.qrbox__close { display: flex; justify-content: center; }
+.qrbox__close .iconbtn {
+  width: var(--h-control);
+  height: var(--h-control);
+  min-height: var(--h-control);
+  background: var(--brand-soft);
+  color: var(--brand);
+  /* 柔光底已经说明了边界，阴影反而脏；去掉基类那层 sh-btn */
+  box-shadow: none;
+}
+/* 图标略放大：圆钮里 20px 的叉偏小，视觉上「按不实」 */
+.qrbox__close .iconbtn svg { width: 22px; height: 22px; }
+
+/* 微信端（由脚本打上 .is-wx）把两个图标钮换回来 */
+.is-wx .dock { display: flex; }
+.is-wx .dock-cta { display: none; }
+
+/* 录音中：录音键上色，与收音行的波形呼吸同步。
+   用 base.css 既有的 .iconbtn--brand 变体（品牌渐变底 + 反白图标 + 品牌投影），
+   不新增视觉语言。颜色不是唯一信号 —— 波形动起来、文案切成「我在听，你说」、
+   按钮 aria-pressed 转 true，三条通道同时说明状态（§10）。
+
+   这里只保留 transform 过渡（按下反馈），去掉 background-color 过渡：
+   .iconbtn 的录音态背景是渐变（background-image），而它的背景色是 transparent。
+   background-image 不参与过渡，背景色却在过渡 —— 途中渐变被近乎透明的背景色
+   挡住，图标却已经转白，会出现约 100ms 的「图标消失」帧。
+   状态切换一步到位更干净，也不会引起重排（§8）。 */
+#btn-mic {
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+/* 录音中：与回复播报钮同一套扩散波 —— 同一个 speakwave 关键帧，
+   视觉语言不分叉（都是「这个元素正在出声」）。
+   挂在 .iconbtn--brand 上而不是自己加状态类：录音时 render() 已经会给
+   这个类（品牌渐变底），复用现成的判据，不再多一个要同步的状态。
+   波纹只在真正收音时出现；识别中（.is-busy）不加，那时是转圈在表达进度。 */
+#btn-mic.iconbtn--brand:not(.is-busy)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--brand);
+  animation: speakwave 1600ms var(--ease-out) infinite;
+  pointer-events: none;
+}
+/* .iconbtn 没写 position，绝对定位的 ::after 会以页面为参照 —— 补上 */
+#btn-mic { position: relative; }
+
+/* 录音键三态图标互斥：麦克风 / 转圈 */
+#btn-mic .iconbtn__spin { display: none; }
+#btn-mic.is-busy .iconbtn__mic { display: none; }
+#btn-mic.is-busy .iconbtn__spin { display: block; }
+
+/* 识别中：转圈。只动 transform（§8），布尔量旋转最省事也最稳 */
+#btn-mic.is-busy .iconbtn__spin {
+  animation: micspin 800ms linear infinite;
+}
+@keyframes micspin { to { transform: rotate(360deg); } }
+
+/* 识别中禁用按压位移，否则转圈会跟着跳 */
+#btn-mic.is-busy:active { transform: none; }
+
+/* 降级动效时转圈显式停住。
+   不靠 base.css 的全局钳制（它把时长压到 150ms、只跑一次，
+   结果同样是静止，但那条规则读起来像"忘了处理"）。
+   口径与本文件的 .wave：停成静态可辨的图形，
+   "正在进行"这件事由旁边那句「正在识别你说的话」承担，不靠图形空转（§8）。 */
+@media (prefers-reduced-motion: reduce) {
+  #btn-mic.is-busy .iconbtn__spin { animation: none; }
+  /* 波纹停住，留一圈静态描边 —— 状态不丢（底色已是品牌渐变），
+     但不空转。与 base.css 里 .speakbtn 的处理同一口径。 */
+  #btn-mic.iconbtn--brand:not(.is-busy)::after {
+    animation: none;
+    opacity: .45;
+    transform: none;
+  }
+}
+/* 内容底部让位 = 按钮直径 + 按钮下边距(--sp-lg) + 安全区 + 8px 余量。
+   与 .dock--float 的 bottom 口径一致，最后一行正好落在按钮上方。 */
+.home__main--hasdock {
+  padding-bottom: calc(var(--h-dock) + var(--sp-lg) + var(--pad-bottom) + var(--sp-xs));
+}
+
+/* ---- 形象选择弹层（原生 dialog，见 DESIGN.md D8） ---- */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-md);
+}
+.picker__opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-sm);
+  background: var(--mist-1);
+  border-radius: var(--r-md);
+  text-align: left;
+  /* 选中态只改 outline-color，不改 border-width（会抖，§5） */
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color var(--dur-micro) var(--ease-out);
+}
+.picker__opt[aria-pressed="true"] { outline-color: var(--brand); }
+
+.picker__thumb {
+  flex: 0 0 auto;
+  width: 56px;   /* 固定几何控件：头像缩略图（§9.1） */
+  height: 56px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  /* 白底占位素材直接落在白底上，无需 multiply，深浅色下都不用换混合模式 */
+  background: var(--surface);
+}
+.picker__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 12%;
+}
+.picker__body { flex: 1 1 auto; min-width: 0; }
+.picker__name { display: block; font-size: var(--text-base); font-weight: var(--w-mid); }
+.picker__desc { display: block; margin-top: var(--sp-3xs); font-size: var(--text-xs); color: var(--ink-3); }
+/* 选中不只靠颜色：另给一个勾选图标（§10 状态双通道） */
+.picker__check { flex: 0 0 auto; width: 20px; height: 20px; color: var(--brand); opacity: 0; }
+.picker__opt[aria-pressed="true"] .picker__check { opacity: 1; }
+
+/* ---- 录音识别结果弹窗 ---- */
+
+/* 编辑框：多行、可改。录音转写结果常有错字，让用户改完再发。
+   base.css 的 .field__input 是单行样式，这里给 textarea 补最小高度与行高。 */
+.speechbox {
+  min-height: 108px;
+  line-height: var(--lh-body);
+  resize: none;              /* 移动端不需要手动拉高，交给 rows 与自适应 */
+  overflow-y: auto;
+}
+
+/* 说明句与编辑框之间的间距。
+   base.css 的 dialog.sheet p 只给了 --sp-xs（8px）下边距，说明句会贴住输入框。
+   按正文行距的呼吸感取 --sp-md（16px），不覆写 base.css 的 p 规则，只作用于本处。 */
+.speechsheet-intro { margin-bottom: var(--sp-md); }
+
+/* 录音期间的禁用外观。
+   口径沿用 base.css 的 .iconbtn[disabled]（opacity .45）。
+   选择器不绑 .iconbtn —— 被拦的两个按钮一个是 .iconbtn（键盘）、
+   一个是 .pill（切换形象），绑了就漏掉后者。
+   看着还能按却按不动，比看着就不能按更糟，所以压暗是必需的，
+   但 pointer-events 要保留 auto，否则收不到点击、给不出原因提示。 */
+.is-blocked {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.is-blocked:active { transform: none; }
+
+/* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写。
+   原先这里有一份「贴底改贴顶」的页面级覆写，那是因为组件默认贴底；
+   现在组件统一走顶部，各页就不必各自纠正一遍。 */
+</style>
+</head>
+<body>
+
+<div class="h5 home">
+  <main class="h5__main home__main home__main--hasdock">
+
+    <div class="toprow">
+      <button class="pill" type="button" id="change-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true">
+          <path d="M4 8h11M4 16h7"/><path d="M17 5l3 3-3 3M13 13l3 3-3 3"/>
+        </svg>
+        切换形象
+      </button>
+    </div>
+
+    <div class="home__stage">
+
+      <figure class="figure figure--hero">
+        <!-- 属性尺寸要与素材真实比例一致（1024×1024，1:1）。
+             写成 300×400（3:4）会在解码前按错误比例占位、加载完再跳一下。
+             另注意 img 有 max-height:100%，舞台比 300px 矮时会从顶部裁掉
+             超出部分，所以这张图必须能与舞台共存，别再把舞台压得比图还矮。 -->
+        <!-- 这里的初始 src 必须与 AVATARS[0] 一致：脚本要等人像解码后才替换，
+             不一致的话首帧会闪一下另一张形象。 -->
+        <img class="figure__img" id="hero-img"
+             src="./h5v2/assets/avatars/avatar-01.png"
+             alt="数字人形象：3D 女性，白色衬衫，无动作"
+             width="300" height="300" loading="eager" decoding="async">
+      </figure>
+
+      <div class="greet home__greet">
+        <h1 class="greet__hi">你好，今天想聊点什么</h1>
+        <p class="greet__sub">智库报告 / 学术论文 / 政策解读，都可以问我</p>
+      </div>
+
+      <!-- 默认态「点按开始说话」：这是给用户的一句动作提示，不是收音状态。
+           波形与之联动，未收音时静止（不加 is-live），点按后才起呼吸。 -->
+      <div class="listening" role="status" aria-live="polite">
+        <span class="wave" id="hero-wave" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+        <span class="listening__text" id="listen-text">点按开始说话</span>
+      </div>
+
+      <!-- 对话示例：让用户一眼看懂这个入口能问什么、答成什么样。
+           内容为演示数据，AI 回答连带来源（DESIGN.md §7 可核查）。 -->
+      <section class="thread" aria-label="对话示例">
+        <p class="bubble bubble--user">长江经济带的区域协调发展，有哪些代表性研究成果？</p>
+
+        <div class="bubble bubble--ai">
+          已按「智库报告 / 学术论文 / 政策解读」分类梳理，共 47 条。
+          <span class="bubble__src">来源：社科专家成果库</span>
+        </div>
+      </section>
+
+      <p class="aiflag">内容由 AI 生成，请注意甄别</p>
+
+    </div>
+
+  </main>
+</div>
+
+<div class="dock dock--float">
+  <!-- aria-pressed=false 是默认态：尚未录音。
+       三态：默认（白底紫图标）→ 录音中（品牌渐变 + .iconbtn--brand）
+             → 识别中（.is-busy，麦克风换成转圈）。 -->
+  <button class="iconbtn" type="button" id="btn-mic"
+          aria-label="录音提问" aria-pressed="false">
+    <svg class="iconbtn__mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+    </svg>
+    <svg class="iconbtn__spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke-opacity=".3"/>
+      <path d="M21 12a9 9 0 0 0-9-9"/>
+    </svg>
+  </button>
+  <!-- 录音期间本钮不可达：href 由脚本摘除，点击改为提示。 -->
+  <a class="iconbtn" href="./chat.html" id="btn-keyboard" aria-label="键盘输入">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+      <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>
+    </svg>
+  </a>
+</div>
+
+<!-- 非微信浏览器备选入口：那两个图标钮（录音 / 键盘）要依赖微信的语音与登录，
+     非微信端两个都用不了，所以整组换成一句话进对话。
+     微信端仍用原本那两个钮（授权由 Auth.boot() 在加载时完成）。
+     这个 <a> 常驻在 DOM 里，只是非微信端才出现，所以自带 href 兜底、
+     不需要脚本参与 —— 纯样式切换，少了「脚本没跑起来就没有入口」的风险。 -->
+<a class="dock-cta" href="./chat.html" id="btn-start">立即对话</a>
+
+<dialog class="sheet" id="avatar-sheet" aria-labelledby="avatar-sheet-title">
+  <h2 id="avatar-sheet-title">选择数字人形象</h2>
+
+  <div class="picker" id="avatar-list"></div>
+
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="avatar-cancel">取消</button>
+  </div>
+</dialog>
+
+<!-- 录音转写弹窗。识别结果常带错字，先给用户一个可改的框再发。
+     用原生 dialog：Esc 自带关闭，焦点自动锁在弹层内。 -->
+<dialog class="sheet" id="speech-sheet" aria-labelledby="speech-title">
+  <h2 id="speech-title">确认提问内容</h2>
+  <p class="speechsheet-intro">以下是语音识别结果，可以直接修改。</p>
+
+  <label class="field" for="speech-text">
+    <span class="sr-only">语音识别结果</span>
+    <textarea class="field__input speechbox" id="speech-text" rows="3"
+              spellcheck="false"></textarea>
+  </label>
+
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="speech-cancel">取消</button>
+    <button class="btn btn--primary" type="button" id="speech-send">发送</button>
+  </div>
+</dialog>
+
+<!-- 扫码引导：非微信浏览器打开时自动弹出。
+     非微信端没有录音入口（底部已换成「立即对话」），扫码进微信体验才完整。
+     用 .modal（居中）而不是 .sheet（贴底）：一张二维码居中陈列更像「看板」，
+     从底部升起会读成「顺手划掉的提示」，与它要引导的动作不符。 -->
+<dialog class="modal qrsheet" id="qr-sheet" aria-labelledby="qr-title" tabindex="-1">
+  <h2 id="qr-title">手机扫码体验更好</h2>
+
+  <div class="qrbox">
+    <img src="./assets/demo-qr.png" alt="扫码在微信中打开" width="320" height="320"
+         loading="lazy" decoding="async">
+  </div>
+
+  <!-- 取消：底部居中的圆形图标钮（×）。与首页底部那系列圆钮同一套外观
+       （base.css 的 .iconbtn），只是尺寸按弹层收一档到 --h-control。 -->
+  <div class="qrbox__close">
+    <button class="iconbtn" type="button" id="qr-close" aria-label="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+</dialog>
+
+<!-- 反馈条：只在「结果不可见」时用（§7）。录音期间点了禁用钮属于此类。 -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="./auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* 占位素材两张，正式形象待授权后替换（DESIGN.md §6）。
+     下标 0 即默认形象 —— 这里放女性。顺序同时是 localStorage 的取值口径，
+     与 chat.html 的 AVATAR_SRC 必须逐位对应，改一边就要改另一边。 */
+  var AVATARS = [
+    {
+      src: './h5v2/assets/avatars/avatar-01.png',
+      name: '形象一',
+      desc: '白色衬衫 · 女性',
+      alt: '数字人形象：3D 女性，白色衬衫，无动作'
+    },
+    {
+      src: './h5v2/assets/avatars/avatar-02.png',
+      name: '形象二',
+      desc: '浅蓝衬衫 · 男性',
+      alt: '数字人形象：3D 男性，浅蓝衬衫，双手抱臂'
+    }
+  ];
+
+  var current = 0;
+  var heroImg = document.getElementById('hero-img');
+  var sheet = document.getElementById('avatar-sheet');
+  var list = document.getElementById('avatar-list');
+
+  var CHECK_SVG =
+    '<svg class="picker__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M20 6L9 17l-5-5"/></svg>';
+
+  function renderOptions() {
+    list.innerHTML = AVATARS.map(function (a, i) {
+      return '<button class="picker__opt" type="button" data-index="' + i + '" ' +
+             'aria-pressed="' + (i === current) + '">' +
+               '<span class="picker__thumb">' +
+                 '<img src="' + a.src + '" alt="" width="56" height="56">' +
+               '</span>' +
+               '<span class="picker__body">' +
+                 '<span class="picker__name">' + a.name + '</span>' +
+                 '<span class="picker__desc">' + a.desc + '</span>' +
+               '</span>' +
+               CHECK_SVG +
+             '</button>';
+    }).join('');
+  }
+
+  /* 形象选择要跨页保持：对话页顶栏小头像与欢迎卡都用同一个形象。
+     存 localStorage 而不是 URL 参数 —— 用户从首页去对话页有两条路径
+     （键盘钮、录音转写弹窗发送），参数方案得两处都带上，漏一处就不一致。
+     老内核可能禁 localStorage，读写都包一层 try，失败就退回默认形象。 */
+  var AVATAR_KEY = 'skl.avatar';
+
+  function rememberAvatar(i) {
+    try { localStorage.setItem(AVATAR_KEY, String(i)); } catch (err) { /* 无痕模式等，忽略 */ }
+  }
+
+  function recallAvatar() {
+    try {
+      var v = parseInt(localStorage.getItem(AVATAR_KEY), 10);
+      return (v >= 0 && v < AVATARS.length) ? v : 0;
+    } catch (err) { return 0; }
+  }
+
+  function applyAvatar(i) {
+    current = i;
+    var a = AVATARS[i];
+    heroImg.src = a.src;
+    heroImg.alt = a.alt;
+    renderOptions();
+    rememberAvatar(i);
+  }
+
+  /* 形象选择。老内核（X5）无 showModal 时退化为直接轮换，
+     不让首页的主入口变成死按钮。 */
+  document.getElementById('change-avatar').addEventListener('click', function () {
+    if (typeof sheet.showModal === 'function') {
+      renderOptions();
+      sheet.showModal();
+    } else {
+      applyAvatar((current + 1) % AVATARS.length);
+    }
+  });
+
+  list.addEventListener('click', function (e) {
+    var opt = e.target.closest('.picker__opt');
+    if (!opt) return;
+    applyAvatar(Number(opt.dataset.index));
+    sheet.close();
+  });
+
+  document.getElementById('avatar-cancel').addEventListener('click', function () {
+    sheet.close();
+  });
+
+  /* ======================================================================
+     收音 → 识别 → 转写确认
+     状态机：idle → recording → recognizing → idle（弹窗期间也属 idle，
+     麦克风回到默认免得与弹窗两处同时"活跃"）
+     这是演示件：识别结果与耗时都是写死的，不做真实录音。
+     ====================================================================== */
+
+  var mic = document.getElementById('btn-mic');
+  var wave = document.getElementById('hero-wave');
+  var listenText = document.getElementById('listen-text');
+
+  var RECOGNIZE_MS = 2000;   /* 演示：识别耗时 2s，见需求 */
+
+  /* 演示用识别结果 —— 与首页示例对话同一主题，跳转对话页后能接上 */
+  var DEMO_SPEECH = '长江经济带的区域协调发展，有哪些代表性研究成果？';
+
+  var speechSheet = document.getElementById('speech-sheet');
+  var speechText = document.getElementById('speech-text');
+  var toastEl = document.getElementById('toast');
+  var keyboardBtn = document.getElementById('btn-keyboard');
+  var changeAvatarBtn = document.getElementById('change-avatar');
+  var keyboardHref = keyboardBtn.getAttribute('href');
+
+  var state = 'idle';
+  var recognizeTimer = null;
+  var toastTimer = null;
+
+  function isRecording() { return state === 'recording'; }
+
+  /* 录音期间要做两件事：视觉上压暗到不可用，交互上拦住并给出原因。
+     只压暗不拦、或只拦不压暗，都会让用户以为是页面坏了。
+     键盘钮是 <a href>，还要摘掉 href 与 tabindex，
+     否则键盘与读屏用户仍能 Tab 过来再回车跳走。 */
+  function setBlocked() {
+    var blocked = isRecording();
+    [keyboardBtn, changeAvatarBtn].forEach(function (el) {
+      el.classList.toggle('is-blocked', blocked);
+      el.setAttribute('aria-disabled', String(blocked));
+      if (blocked) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
+    if (blocked) keyboardBtn.removeAttribute('href');
+    else keyboardBtn.setAttribute('href', keyboardHref);
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2000);
+  }
+
+  /* 登录弹层里的成功提示走本页同一个 toast —— 位置与样式全站一套。 */
+  Auth.onToast(toast);
+
+  /* 环境分流 + 加载时授权。
+     微信端：发起授权（Auth.boot），底部换成录音 / 键盘两个图标钮，
+             并放出收音状态行。
+     非微信端：什么都不做 —— 底部保持「立即对话」，收音行保持隐藏。
+
+     判定**只看 UA**（MicroMessenger）。
+     曾在这里加过「同时要有触摸 + 小屏」的附加条件，想挡掉桌面微信；
+     结果真机微信也被挡了（`screen.width` 在安卓微信里常报物理分辨率，
+     远大于 768）。真机实测优先于推测，去掉该条件 ——
+     代价是桌面微信也会按微信端处理（它没有公众号授权能力），
+     这个单一规则更好预期，也符合「微信浏览器里就该走微信那套」。 */
+  if (Auth.isWeChat()) {
+    document.documentElement.classList.add('is-wx');
+    Auth.boot();
+  } else {
+    /* 非微信端：进页面就提示扫码去微信体验（那里才有语音入口）。
+       微信端不弹 —— 已经在微信里了，这条提示没有意义。 */
+    /* 自动弹出后取消钮会带上「选中」描边：showModal 把初始焦点给了弹层里
+       第一个可聚焦元素（就是这个按钮），命中 base.css 的全局 :focus-visible。
+       光给 dialog 加 tabindex="-1" 不够 —— Chromium 仍优先聚焦后代，
+       必须显式把焦点收到弹层容器上。Esc / Tab 在弹层内的行为不受影响。 */
+    var qrSheet = document.getElementById('qr-sheet');
+    if (qrSheet) {
+      /* 同转写弹窗：老内核无 showModal 时也要能显示，不能只写 if */
+      if (typeof qrSheet.showModal === 'function') {
+        qrSheet.showModal();
+        qrSheet.focus();
+      } else {
+        qrSheet.setAttribute('open', '');
+      }
+    }
+    document.getElementById('qr-close').addEventListener('click', function () {
+      if (typeof qrSheet.close === 'function') qrSheet.close();
+      else qrSheet.removeAttribute('open');
+    });
+  }
+
+  /* ---- 三处联动的状态渲染 ---- */
+  function render(next) {
+    state = next;
+    var rec = next === 'recording';
+    var busy = next === 'recognizing';
+
+    mic.setAttribute('aria-pressed', String(rec));
+    mic.classList.toggle('iconbtn--brand', rec);
+    mic.classList.toggle('is-busy', busy);
+    /* 识别中按钮不再可点：此时再点是"取消识别"这种需求之外的语义，
+       直接禁用比让它变成一个含义不明的开关更清楚。 */
+    mic.disabled = busy;
+    mic.setAttribute('aria-label',
+      busy ? '正在识别录音' : (rec ? '结束录音' : '录音提问'));
+
+    /* 波形与文案只在真正收音时活跃；识别中波形停住，文案说明在做什么 */
+    wave.classList.toggle('is-live', rec);
+    listenText.classList.toggle('is-live', rec);
+    listenText.textContent = busy ? '正在识别你说的话'
+                          : rec ? '我在听，你说' : '点按开始说话';
+
+    setBlocked();
+  }
+
+  /* 识别完成 → 弹出可编辑的确认框，用户改完点「发送」才进对话页。
+     这一步不能省：识别结果常有错字，直接发出去就把错字带上了。
+     两端同一条路径（非微信没有语音入口，走不到这里；将来放开也是这套）。 */
+  function finishRecognize() {
+    recognizeTimer = null;
+    render('idle');
+    speechText.value = DEMO_SPEECH;
+    /* 兜底分支不能省：老内核（部分微信 X5）没有 showModal，
+       只写 if 的话弹窗永远不弹 —— 表现就是「点完录音什么也没发生」。
+       与 auth.js 的 open() 同一套写法（那边一直是对的，这里漏了）。
+       兜底用 setAttribute('open')，配套定位见 base.css 的 @supports not selector(dialog:modal)。 */
+    if (typeof speechSheet.showModal === 'function') speechSheet.showModal();
+    else speechSheet.setAttribute('open', '');
+    speechText.focus();
+  }
+
+  /* 关弹窗：同样两条路。只调 close() 的话，走兜底打开时这条是空操作，
+     弹窗关不掉（点取消没反应）。 */
+  function closeSheet() {
+    if (typeof speechSheet.close === 'function') speechSheet.close();
+    else speechSheet.removeAttribute('open');
+  }
+
+  /* 带着提问跳对话页，由那边作为首条消息发出。
+     文本走 sessionStorage，**不只**靠 ?q=：
+     查询串会被中间层改掉 —— 开发服务器的「干净 URL」301 会把整条 query 丢掉
+     （缓存过的重定向尤其顽固），微信 WebView 也可能重写 URL。
+     这条文本是用户刚说、刚改的，丢了就是数据丢失，所以要一条不经 URL 的通道。
+     ?q= 仍然拼上：直接粘贴带参链接、或脚本没跑起来时，那边还能读到。 */
+  function goChat(text) {
+    try { sessionStorage.setItem('skl.pendingQ', text); } catch (e) { /* 无痕模式等，忽略 */ }
+    window.location.href = './chat.html?q=' + encodeURIComponent(text);
+  }
+
+  /* 录音不做登录校验：本页的登录统一在加载时完成（微信调授权），
+     所以走到这里身份已经确定了。原先在此处 require 的写法已移除 ——
+     校验前移后，每个操作点再拦一遍只会多出重复的弹层路径。 */
+  mic.addEventListener('click', function () {
+    if (state === 'idle') { render('recording'); return; }
+    if (state === 'recording') {
+      render('recognizing');
+      recognizeTimer = setTimeout(finishRecognize, RECOGNIZE_MS);
+    }
+  });
+
+  /* 录音期间的互斥保护。键盘钮是 <a href>，摘掉 href 才能真正拦住导航；
+     形象切换钮是 button，靠这里拦住。两处都给同一条提示。 */
+  var BLOCKED_MSG = '正在录音';
+  keyboardBtn.addEventListener('click', function (e) {
+    if (!isRecording()) return;
+    e.preventDefault();
+    toast(BLOCKED_MSG);
+  });
+  changeAvatarBtn.addEventListener('click', function (e) {
+    if (!isRecording()) return;
+    e.stopImmediatePropagation();
+    toast(BLOCKED_MSG);
+  }, true);   /* 捕获阶段先拦，避免又把选择弹层推开 */
+
+  /* ---- 转写弹窗的动作 ---- */
+  document.getElementById('speech-cancel').addEventListener('click', closeSheet);
+
+  document.getElementById('speech-send').addEventListener('click', function () {
+    var text = speechText.value.trim();
+    if (!text) {
+      speechText.focus();
+      toast('内容不能为空');
+      return;
+    }
+    /* 文本经 sessionStorage（并带 ?q=）交给对话页，由那边作为首条提问发出 */
+    closeSheet();
+    goChat(text);
+  });
+
+  /* 启动：读回上次选的形象，再进入 idle */
+  current = recallAvatar();
+  applyAvatar(current);
+  render('idle');
+})();
+</script>
+</body>
+</html>

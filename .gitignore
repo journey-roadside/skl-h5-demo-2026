@@ -1,0 +1,9 @@
+# 验证与临时产物
+.playwright-mcp/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+AGENTS.md
+CLAUDE.md

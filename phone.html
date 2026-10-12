@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>更换手机号 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   更换手机号 —— 三级页（账户页 → 身份行）
+   表单与新号验证都在这里；短信校验复用 auth.js 的同一套规则与演示账号。
+
+   两项共用一行布局 .authcode（输入框 + 获取验证码），该类在 base.css 里，
+   与登录弹层用的是同一个 —— 高度、间距不再各写一遍。
+   ========================================================================== */
+
+.ph__head { flex: 1 1 auto; min-width: 0; }
+.ph__back { flex: 0 0 auto; color: var(--brand); }
+
+/* 表单卡片：与账户页的 .rowlist 同一套外形（白卡 + 大圆角 + 柔和阴影） */
+.ph__card .field + .field { margin-top: var(--sp-lg); }
+.ph__submit { margin-top: var(--sp-xl); }
+
+/* 表单卡片贴到页头下方：原先靠「当前手机号」那行撑开间距，那行已移除，
+   卡片要自己给出与页头的距离。 */
+.ph__card { margin-top: var(--sp-lg); }
+</style>
+</head>
+<body>
+
+<div class="h5">
+
+  <header class="pagehead">
+    <div class="ph__head">
+      <h1 class="pagehead__title">更换手机号</h1>
+      <p class="pagehead__sub">验证新号码后即可完成更换</p>
+    </div>
+
+    <button class="iconbtn iconbtn--sm ph__back" type="button" id="btn-back" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+  </header>
+
+  <main class="h5__main">
+
+    <div class="card ph__card">
+      <label class="field" for="ph-phone">
+        <span class="field__label">新手机号</span>
+        <input class="field__input" id="ph-phone" type="tel" inputmode="numeric"
+               maxlength="11" autocomplete="tel" placeholder="请输入 11 位手机号">
+      </label>
+
+      <label class="field" for="ph-code">
+        <span class="field__label">短信验证码</span>
+        <div class="authcode">
+          <input class="field__input" id="ph-code" type="text" inputmode="numeric"
+                 maxlength="6" autocomplete="one-time-code" placeholder="6 位验证码">
+          <button class="btn btn--quiet" type="button" id="ph-send">获取验证码</button>
+        </div>
+        <span class="field__help" id="ph-help"></span>
+      </label>
+    </div>
+
+    <button class="btn btn--primary btn--block ph__submit" type="button" id="ph-save">保存</button>
+
+  </main>
+</div>
+
+<script src="./auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var CODE_MS = 60000;
+  var DEMO_CODE = '123456';       /* 与 auth.js 同一演示码；接真后端时删掉这一段校验 */
+  var DEMO_PHONE = '13800138000';
+
+  var phoneEl = document.getElementById('ph-phone');
+  var codeEl = document.getElementById('ph-code');
+  var helpEl = document.getElementById('ph-help');
+  var sendBtn = document.getElementById('ph-send');
+
+  var timer = null, countdown = 0;
+
+  /* ---- 返回：沿用全站约定 ---- */
+  var BACK_MAP = {
+    account: './account.html',
+    chat:    './chat.html',
+    index:   './index.html'
+  };
+  document.getElementById('btn-back').addEventListener('click', function () {
+    var v = '';
+    try { v = (new URLSearchParams(location.search).get('from') || '').trim(); } catch (err) { v = ''; }
+    location.href = BACK_MAP[v] ? BACK_MAP[v] : './account.html';
+  });
+
+  /* 当前号码只在「同号校验」时读一次，不再在页面上显示 ——
+     用户是从账户页点进来的，那里刚看过脱敏号码，这里再重复一遍是噪声。 */
+  function isPhone(v) { return /^1[3-9]\d{9}$/.test(v); }
+
+  function startCountdown() {
+    countdown = CODE_MS / 1000;
+    sendBtn.disabled = true;
+    tick();
+    timer = setInterval(tick, 1000);
+  }
+  function tick() {
+    if (countdown <= 0) { stopCountdown(); return; }
+    sendBtn.textContent = countdown + ' 秒后重发';
+    countdown--;
+  }
+  function stopCountdown() {
+    if (timer) { clearInterval(timer); timer = null; }
+    sendBtn.disabled = false;
+    sendBtn.textContent = '获取验证码';
+    countdown = 0;
+  }
+
+  /* ---- 获取验证码 ---- */
+  sendBtn.addEventListener('click', function () {
+    var p = phoneEl.value.trim();
+    if (!isPhone(p)) {
+      Auth.toast('手机号格式不对，请填 11 位手机号。');
+      phoneEl.setAttribute('aria-invalid', 'true');
+      phoneEl.focus();
+      return;
+    }
+    if (p === (Auth.get() || {}).phone) {
+      Auth.toast('新手机号与当前号码相同，请换一个。');
+      phoneEl.setAttribute('aria-invalid', 'true');
+      phoneEl.focus();
+      return;
+    }
+    phoneEl.removeAttribute('aria-invalid');
+    /* 页面不露码，与登录弹层同一口径 */
+    helpEl.textContent = '验证码已发送，请查看短信并填入。';
+    codeEl.focus();
+    startCountdown();
+  });
+
+  /* ---- 保存 ---- */
+  document.getElementById('ph-save').addEventListener('click', function () {
+    stopCountdown();   /* 提交后无论成败都停掉重发计时，避免留着一个在跑的定时器 */
+
+    var p = phoneEl.value.trim();
+    var c = codeEl.value.trim();
+
+    if (!isPhone(p)) {
+      Auth.toast('手机号格式不对，请填 11 位手机号。');
+      phoneEl.setAttribute('aria-invalid', 'true');
+      phoneEl.focus();
+      return;
+    }
+    if (p === (Auth.get() || {}).phone) {
+      Auth.toast('新手机号与当前号码相同，请换一个。');
+      phoneEl.setAttribute('aria-invalid', 'true');
+      phoneEl.focus();
+      return;
+    }
+    if (!/^\d{6}$/.test(c)) {
+      Auth.toast('验证码是 6 位数字，请检查后重填。');
+      codeEl.setAttribute('aria-invalid', 'true');
+      codeEl.focus();
+      return;
+    }
+    if (c !== DEMO_CODE) {
+      Auth.toast('验证码不对或已过期，请重新获取。');
+      codeEl.setAttribute('aria-invalid', 'true');
+      codeEl.focus();
+      return;
+    }
+    /* 演示环境只认演示号，与登录同一口径（auth.js 的 DEMO_PHONE） */
+    if (p !== DEMO_PHONE) {
+      Auth.toast('当前为演示环境，请使用演示账号的手机号。');
+      phoneEl.setAttribute('aria-invalid', 'true');
+      phoneEl.focus();
+      return;
+    }
+
+    /* 写回登录态。真实场景这里是一次改绑接口调用。 */
+    var next = Auth.get() || {};
+    next.phone = p;
+    try { localStorage.setItem('skl.user', JSON.stringify(next)); } catch (err) { /* 忽略 */ }
+
+    Auth.toast('手机号已更新');
+    stopCountdown();
+    /* 回账户页，让用户看到新号码；用 replace 免得返回又落回这个已完成的表单 */
+    setTimeout(function () { location.replace('./account.html?from=chat'); }, 900);
+  });
+
+  /* 边改边清错误态 */
+  [phoneEl, codeEl].forEach(function (el) {
+    el.addEventListener('input', function () { el.removeAttribute('aria-invalid'); });
+  });
+
+  codeEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('ph-save').click(); }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的账户 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   我的账户 —— 二级页（从对话页顶栏头像进入）
+   按环境分两套：微信内用微信身份（头像 + 昵称，只读，不能退出）；
+   非微信用手机号（可改），并可退出登录。
+
+   两处结构差异（返回钮、身份行、退出钮）都由 .is-wx / 默认态切换 ——
+   微信端靠微信 APP 的原生导航返回，页内再放一个返回箭头是重复。
+   ========================================================================== */
+
+.acct__head { flex: 1 1 auto; min-width: 0; }
+.acct__back { flex: 0 0 auto; color: var(--brand); }
+
+/* 身份行：头像 + 名字/手机号（+ 可选箭头），左右两端对齐。
+   账户页的头像保持 --brand-soft —— 与对话页顶栏那枚不同：
+   那里是「一左两右三个可点圆钮」中的一员，要与按钮同底色；
+   这里是纯展示的身份标识，不承担点击，柔光底更安静。 */
+.acct__avatar {
+  flex: 0 0 auto;
+  width: var(--figure-dock); height: var(--figure-dock);
+  border-radius: var(--r-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.acct__avatar svg { width: 24px; height: 24px; }
+.acct__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.acct__name { flex: 1 1 auto; min-width: 0; font-size: var(--text-base); font-weight: var(--w-mid); }
+.acct__value { flex: 1 1 auto; min-width: 0; font-size: var(--text-base);
+               font-variant-numeric: tabular-nums; }
+
+/* 两张卡片：身份一张、协议一张，中间留一级间距。
+   合成一张时「我是谁」和「条款」挤在同一个白块里，读起来是一件事；
+   分开后各自成块，层级一眼就分得开。 */
+.acct__card + .acct__card { margin-top: var(--sp-md); }
+
+/* 服务协议：一栏两行，各自可点。用 .row 的骨架，右侧是**外链**图标。
+   不复用 .row__chev（右尖括号）—— 那个语义是「进下一级页面」，
+   这里是「离开当前页去外部链接」，两个动作的含义不同，图标不该混用。 */
+.acct__proto { justify-content: space-between; }
+
+/* 外链图标：方框 + 右上箭头。
+   次级灰（--ink-3）而不是品牌色 —— 它只是补充说明「这行会跳出去」，
+   不是本页的主动作；与左侧文字同行的 .row__chev 也是这个量级。
+   尺寸对齐 .row__chev(18px)，两处箭头在各自的卡片里读起来是一套。 */
+.acct__ext {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  color: var(--ink-3);
+}
+
+/* 卡片内所有可点行都去掉悬停下划线。
+   base.css 给 a:hover 加了 underline，那是给正文链接的；这里是列表行/按钮形态，
+   形态本身已经说明可点，加下划线不合体（顶栏「历史」「立即对话」同理，已各自处理）。 */
+.acct__card a,
+.acct__card a:hover { text-decoration: none; }
+
+/* 退出登录：单独一行大按钮，与上面的卡片留一级间距 */
+.acct__logout { margin-top: var(--sp-xl); }
+
+/* ---- 环境切换 ----
+   默认（非微信）：显示退出钮，隐藏微信身份行。
+   微信端由脚本打 .is-wx：反过来。
+   身份行两块内容分开写、各自显隐，而不是改文字 —— 结构不同（一个有箭头）,
+   用同一节点改文案会把箭头也留在微信端。
+   注意返回钮**不在**这里：它两端都显示（微信里也有可能出现没有原生导航的场景，
+   少一个返回出口比多一个更麻烦）。 */
+.acct__row-wx { display: none; }
+.is-wx .acct__row-wx { display: flex; }
+.is-wx .acct__row-phone,
+.is-wx .acct__logout { display: none; }
+</style>
+</head>
+<body>
+
+<div class="h5">
+
+  <header class="pagehead">
+    <div class="acct__head">
+      <h1 class="pagehead__title">我的账户</h1>
+      <p class="pagehead__sub">账号信息与设置</p>
+    </div>
+
+    <button class="iconbtn iconbtn--sm acct__back" type="button" id="btn-back" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+  </header>
+
+  <main class="h5__main">
+
+    <!-- 卡片一：身份 -->
+    <div class="rowlist acct__card">
+      <!-- 微信身份：头像 + 昵称，只能看。微信用户不提供退出/注销 ——
+           身份由公众号授权给，退出该由微信侧管，页面里放个退出钮反而说不清后果。 -->
+      <div class="row acct__row-wx" id="row-wx">
+        <span class="acct__avatar">
+          <img data-wx-avatar alt="" hidden>
+          <svg data-wx-avatar-fallback viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8.6" r="3.9"/>
+            <path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/></svg>
+        </span>
+        <span class="acct__name" id="wx-name">微信用户</span>
+      </div>
+
+      <!-- 手机号身份：默认头像（不可改）+ 脱敏号码 + 箭头，整行进改号页 -->
+      <a class="row acct__row-phone" href="./phone.html?from=account" id="row-phone">
+        <span class="acct__avatar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8.6" r="3.9"/>
+            <path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/></svg>
+        </span>
+        <span class="acct__value" id="phone-masked">—</span>
+        <svg class="row__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 5l7 7-7 7"/></svg>
+      </a>
+
+    </div>
+
+    <!-- 卡片二：条款类入口，与身份卡分开成块。
+         地址尚未确定，点击先给 toast 占位。 -->
+    <div class="rowlist acct__card">
+      <a class="row acct__proto" href="#" data-proto="服务协议">
+        <span class="acct__name">服务协议</span>
+        <svg class="acct__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+          <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+      </a>
+      <a class="row acct__proto" href="#" data-proto="隐私条款">
+        <span class="acct__name">隐私条款</span>
+        <svg class="acct__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+          <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+      </a>
+    </div>
+
+    <!-- 仅非微信：微信用户不提供退出。
+         用 --ghost（白底 + 品牌字）而不是 --danger 实心红：退出有二次确认兜着，
+         不必先把按钮染红吓人；红底留给确认弹层里那个真正执行的按钮。 -->
+    <button class="btn btn--ghost btn--block acct__logout acct__row-phone" type="button" id="btn-logout">
+      退出登录
+    </button>
+
+  </main>
+</div>
+
+<!-- 退出二次确认。用贴底的 .sheet —— 这是就地确认，不是要专心填的表单 -->
+<dialog class="sheet" id="logout-sheet" aria-labelledby="logout-title">
+  <h2 id="logout-title">退出登录？</h2>
+  <p>退出后需要重新用手机号登录，才能继续提问。</p>
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="logout-cancel">取消</button>
+    <button class="btn btn--danger" type="button" id="logout-ok">退出</button>
+  </div>
+</dialog>
+
+<script src="./auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---- 返回：沿用全站约定，读 ?from= 白名单，本页只读不写 ---- */
+  var BACK_MAP = {
+    chat:    './chat.html',
+    index:   './index.html',
+    history: './history.html',
+    account: './account.html'
+  };
+  function readFrom() {
+    var v = '';
+    try { v = (new URLSearchParams(location.search).get('from') || '').trim(); } catch (err) { v = ''; }
+    return BACK_MAP[v] ? BACK_MAP[v] : './index.html';
+  }
+  document.getElementById('btn-back').addEventListener('click', function () {
+    location.href = readFrom();
+  });
+
+  /* ---- 脱敏手机号：保留前 4 与后 4，中间打星。
+     不用固定 4 颗星 —— 那样眼睛没法校验长度，且不同位数的号码看起来一样。 */
+  function maskPhone(p) {
+    if (!p || p.length < 8) return p || '—';
+    return p.slice(0, 4) + new Array(p.length - 7).join('*') + p.slice(-4);
+  }
+
+  /* ---- 环境分流 ---- */
+  var user = Auth.get() || {};
+  var isWx = Auth.isWeChat();
+
+  if (isWx) {
+    document.documentElement.classList.add('is-wx');
+    /* 微信身份占位：真实场景取授权返回的昵称与头像 URL。
+       演示站拿不到，用默认昵称；头像数据缺失时退回内置图形。 */
+    document.getElementById('wx-name').textContent = user.nickname || '微信用户';
+    if (user.avatar) {
+      var img = document.querySelector('[data-wx-avatar]');
+      img.src = user.avatar;
+      img.hidden = false;
+      /* 必须走 setAttribute，不能写 `.hidden = true` ——
+         SVGElement 没有 hidden 属性（它在 HTMLElement 上），
+         那样写只会挂一个 JS 自定义属性，图形照旧显示，头像与默认图形重叠。
+         `hidden` 作为 HTML 属性对 svg 是生效的，配合 base.css 的 [hidden] 规则。 */
+      document.querySelector('[data-wx-avatar-fallback]').setAttribute('hidden', '');
+    }
+  } else {
+    document.getElementById('phone-masked').textContent = maskPhone(user.phone);
+  }
+
+  /* ---- 服务协议 / 隐私条款：地址待定，先 toast 占位 ---- */
+  document.querySelectorAll('[data-proto]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      Auth.toast(a.getAttribute('data-proto') + '链接待接入');
+    });
+  });
+
+  /* ---- 退出登录：二次确认 ---- */
+  var sheet = document.getElementById('logout-sheet');
+
+  document.getElementById('btn-logout').addEventListener('click', function () {
+    if (typeof sheet.showModal === 'function') sheet.showModal();
+    else sheet.setAttribute('open', '');
+  });
+
+  document.getElementById('logout-cancel').addEventListener('click', function () {
+    if (typeof sheet.close === 'function') sheet.close();
+    else sheet.removeAttribute('open');
+  });
+
+  document.getElementById('logout-ok').addEventListener('click', function () {
+    if (typeof sheet.close === 'function') sheet.close();
+    else sheet.removeAttribute('open');
+    Auth.logout();
+    /* 退出后回首页：本页在未登录下没有可看的内容 */
+    location.replace('./index.html');
+  });
+})();
+</script>
+</body>
+</html>

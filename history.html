@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>历史对话 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   历史对话列表页 —— 见 h5v2/DESIGN.md §4.3
+   骨架：页头（标题 + 一句话说明）→ 行列表（标题两行截断 + 相对时间 + 消息数）
+         → 吸底的「新建对话」按钮 → 删除走二次确认 sheet
+
+   状态覆盖（父仓库 05-Design/SKLQ2-H5端页面流程图.md §3）：
+   空列表 / 加载中 / 加载失败 / 无标题 / 删除确认 / 删除成功 / 删除失败。
+   演示态用 ?state= 切换：loading · error · empty · delfail（见脚本）。
+
+   类名全部走 base.css（.pagehead / .rowlist / .row / .empty / .skeleton /
+   dialog.sheet / .toast），本文件只写页面级补充，不改组件数值。
+   ========================================================================== */
+
+/* 页头：左侧「标题 / 说明」两行，返回钮靠最右。
+   base.css 的 .pagehead 只做了横向排布，没有处理「一块两行文字」——
+   文字块必须自己成列，否则标题与说明会被 flex 摊成并排。
+   flex:1 把剩余宽度吃满，返回钮自然被推到最右。 */
+.hist__head { flex: 1 1 auto; min-width: 0; }
+
+/* 返回钮：与对话页顶栏两个图标钮同色同视觉重量。
+   颜色本来就是同一个令牌（--brand），天然一致；真正有差的是视觉重量 ——
+   单条细折线的箭头比「+」和时钟看着更轻，所以在标记里把 stroke-width
+   提到 2.2 补回来。描边写在 svg 属性上而不是这里另加规则，
+   免得同一件事在两个地方各说一遍。 */
+.hist__back { flex: 0 0 auto; color: var(--brand); }
+
+/* 行列表与页头之间留一级间距 */
+.hist__list { margin-top: var(--sp-md); }
+
+/* 行内容区。
+   base.css 的 .row 是「整行就是一个按钮」的假设；本页每行要挂两个动作
+   （进入会话 / 删除），按钮不能嵌套，所以行降级为容器、主操作用内层按钮。
+   .row 的 min-height / padding / 分隔线仍然生效，只是按下反馈移到内层。 */
+.row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  text-align: left;
+}
+.row__main:active { background: var(--mist-1); }
+
+/* 无标题是「缺内容」不是「次要内容」：压一档色，但字号不降（§3 正文下限 16px）。
+   走类名而不是内联 style —— 令牌不许散落在 JS 字符串里。 */
+.row__title--untitled { color: var(--ink-3); }
+
+/* 行操作组：编辑 + 删除两个图标钮。
+   视觉间距由「盒子宽 − 图标宽 + gap」决定，光调 gap 没用：
+   两个 44px 方盒各含 20px 图标，左右各有 12px 死区，图标之间会隔着 28px。
+   所以把盒子宽收到 36px（= --h-tap 减一级 --sp-xs），图标之间落到 20px。
+   高度仍保 --h-tap 44px —— 体系里 .linklike 就是这个口径：文字动作只保证
+   纵向热区，宽度随内容。列表行里拇指的精度是纵向的，横向收到
+   「图标 + 左右各 8px 内边距」足够，也让标题多出 16px 可用宽度。 */
+.rowacts {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2xs);
+}
+.rowact {
+  width: calc(var(--h-tap) - var(--sp-xs));
+  height: var(--h-tap);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--ink-3);
+  transition: background-color var(--dur-micro) var(--ease-out),
+              color var(--dur-micro) var(--ease-out);
+}
+.rowact svg { width: 20px; height: 20px; }
+.rowact:active { background: var(--mist-3); color: var(--brand); }
+
+/* 删除的按下态才用危险色（§2.1 危险色与品牌色分离）。
+   静止态两者都不着色 —— 一列红叉会把整个列表压得发沉，像是处处在报警。 */
+.rowact--del:active { background: var(--danger-soft); color: var(--danger); }
+
+/* 重命名弹层：字段与上方说明之间留一级间距（base.css 的 sheet p 只给 8px） */
+.rensheet__field { margin-top: var(--sp-md); }
+
+/* 加载态：用 .skeleton 铺三行占位，保住行高节奏，不整页转圈 */
+.skrow { display: flex; align-items: center; gap: var(--sp-md);
+         padding: var(--sp-md) var(--sp-lg); min-height: var(--h-tap); }
+.skrow + .skrow { border-top: 1px solid var(--line); }
+.skrow__bars { flex: 1 1 auto; }
+.skrow__bars .skeleton { height: 1em; }
+.skrow__bars .skeleton + .skeleton { margin-top: var(--sp-xs); width: 40%; height: .75em; }
+
+/* 确认删除时把会话标题压成一行，避免长标题把弹层撑高 */
+.rowsheet__name {
+  display: block;
+  margin-top: var(--sp-xs);
+  font-size: var(--text-base);
+  color: var(--ink);
+  font-weight: var(--w-mid);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写。 */
+</style>
+</head>
+<body>
+
+<div class="h5">
+
+  <header class="pagehead">
+    <div class="hist__head">
+      <h1 class="pagehead__title">历史对话</h1>
+      <p class="pagehead__sub">你提过的问题都会保存在这里</p>
+    </div>
+
+    <!-- 返回：与标题同行、靠最右。去向由跳转来源决定（见脚本 readFrom）——
+         本页目前只从对话页进入，但来源会被记下来，
+         以后首页加「查看历史」入口时不用回来改这里。 -->
+    <button class="iconbtn iconbtn--sm hist__back" type="button" id="btn-back" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+  </header>
+
+  <main class="h5__main">
+    <div class="hist__list" id="list"></div>
+  </main>
+
+</div>
+
+<!-- 删除二次确认（§4.3 / 流程图浮层 L3）。原生 dialog：Esc 自带关闭，焦点锁在层内。 -->
+<dialog class="sheet" id="del-sheet" aria-labelledby="del-title">
+  <h2 id="del-title">删除这个对话？</h2>
+  <p>删除后对话内容无法恢复。</p>
+  <span class="rowsheet__name" id="del-name"></span>
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="del-cancel">取消</button>
+    <button class="btn btn--danger" type="button" id="del-ok">删除</button>
+  </div>
+</dialog>
+
+<!-- 重命名（§4.3 行操作）。用 dialog 而非 prompt()：prompt 在微信里样式不可控、
+     且会同时被拦截弹窗策略影响，原型要演的就是真实交互形态。 -->
+<dialog class="sheet" id="ren-sheet" aria-labelledby="ren-title">
+  <h2 id="ren-title">修改对话名称</h2>
+  <p>只改名称，对话内容不受影响。</p>
+
+  <label class="field rensheet__field" for="ren-input">
+    <span class="sr-only">对话名称</span>
+    <input class="field__input" id="ren-input" type="text" maxlength="30"
+           autocomplete="off" enterkeyhint="done" placeholder="给这个对话起个名字">
+  </label>
+  <!-- 错误容器不塌陷：没出错时也占一行，出现错误不跳版（base.css .field__error） -->
+  <p class="field__error" id="ren-error" role="alert"></p>
+
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="ren-cancel">取消</button>
+    <button class="btn btn--primary" type="button" id="ren-ok">保存</button>
+  </div>
+</dialog>
+
+<!-- 反馈条：只在「结果不可见」时用（§7）。
+     删除成功后行立刻消失，结果看得见，所以不弹提示条，只走下面的读屏播报。 -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<p class="sr-only" id="live" role="status" aria-live="polite"></p>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ======================================================================
+     历史对话列表
+     数据是演示用的：存在 localStorage 的 skl.convs，首次访问播种。
+     删掉能真的删掉、刷新还在，演示才有实感；?reset=1 可恢复初始数据。
+     真实接口接入时替换 load() 一处即可，渲染与交互不动。
+
+     已知边界（不在本页范围）：对话页尚未按 id 读回多轮内容，
+     所以点进某条会话目前等于开一个新对话。属于 chat.html 的后续改造。
+     ====================================================================== */
+
+  var KEY = 'skl.convs';
+  var state = '';
+  try { state = (new URLSearchParams(location.search).get('state') || '').trim(); } catch (err) { state = ''; }
+
+  var list = document.getElementById('list');
+  var sheet = document.getElementById('del-sheet');
+  var delName = document.getElementById('del-name');
+  var toastEl = document.getElementById('toast');
+  var liveEl = document.getElementById('live');
+  var toastTimer = null;
+  var pendingId = null;
+  /* 演示开关：?state=delfail 时下一次删除失败，用来展示删除失败态 */
+  var failNextDelete = (state === 'delfail');
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2400);
+  }
+
+  /* ---- 返回 ----------------------------------------------------------
+     本页是二级页，返回要么回来源页、要么按层级回首页。
+     用「读来源参数」而不是直接 history.back()，因为 back() 在两种情况下是错的：
+       · 用户从收藏/分享直接打开本页 —— 栈里没有上一页，back() 毫无反应；
+       · 用户在本页删过对话（状态已变），回退可能命中被浏览器缓存的旧 DOM。
+
+     来源由跳转方用 ?from= 带上，本页只读不写：
+     来源已经完整地留在 URL 里了，刷新、前进后退都不会丢，
+     页面再去改写 URL 只会把真实来源覆盖掉（包括「没有来源」这件事本身）。
+     取值走白名单，避免 ?from=https://… 把返回钮变成站外跳转。
+     ------------------------------------------------------------------ */
+
+  var BACK_MAP = {
+    chat:    './chat.html',
+    index:   './index.html',
+    history: './history.html'
+  };
+
+  function readFrom() {
+    var v = '';
+    try { v = (new URLSearchParams(location.search).get('from') || '').trim(); } catch (err) { v = ''; }
+    return BACK_MAP[v] ? BACK_MAP[v] : './index.html';   /* 未知来源按层级回首页 */
+  }
+
+  document.getElementById('btn-back').addEventListener('click', function () {
+    location.href = readFrom();
+  });
+
+  /* ---- 数据 ---------------------------------------------------------- */
+
+  /* 时间戳按「距现在多久」生成，保证每次打开读起来都合理 */
+  var MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+  var SEED = [
+    { id: 'demo-1', title: '长江经济带有哪些代表性研究成果？', count: 6,  ago: 2 * HOUR },
+    { id: 'demo-2', title: '湖北有哪些重点智库？',             count: 4,  ago: 1 * DAY },
+    { id: 'demo-3', title: '「中部崛起」相关政策解读',         count: 8,  ago: 3 * DAY },
+    /* 无标题态：首条提问是语音且没识别出内容时，标题为空 —— 列表显示占位名 */
+    { id: 'demo-4', title: '',                                 count: 2,  ago: 5 * DAY },
+    { id: 'demo-5', title: '近五年湖北社科基金立项情况',       count: 12, ago: 12 * DAY }
+  ];
+
+  var UNTITLED = '未命名对话';
+
+  var convs = [];
+
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (err) { raw = null; }
+
+    try { convs = raw ? JSON.parse(raw) : []; } catch (err) { convs = []; }
+    if (!Array.isArray(convs) || !convs.length) convs = seed();
+  }
+
+  function seed() {
+    var now = Date.now();
+    return SEED.map(function (c) {
+      return { id: c.id, title: c.title, count: c.count, ts: now - c.ago };
+    });
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(convs)); } catch (err) { /* 无痕模式，忽略 */ }
+  }
+
+  /* ---- 相对时间 ------------------------------------------------------ */
+
+  function relTime(ts) {
+    var m = Math.floor((Date.now() - ts) / MIN);
+    if (m < 1) return '刚刚';
+    if (m < 60) return m + ' 分钟前';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + ' 小时前';
+    var d = Math.floor(h / 24);
+    if (d === 1) return '昨天';
+    if (d < 30) return d + ' 天前';
+    return Math.floor(d / 30) + ' 个月前';
+  }
+
+  /* ---- 渲染 ---------------------------------------------------------- */
+
+  var TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+              'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+              '<path d="M4 7h16M10 11v6M14 11v6"/>' +
+              '<path d="M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+
+  /* 铅笔：改写动作的通用符号，比「T」或「…」都更少歧义 */
+  var PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+               'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+               '<path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4Z"/>' +
+               '<path d="M13.5 6.5l4 4"/></svg>';
+
+  function clear() {
+    while (list.firstChild) list.removeChild(list.firstChild);
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function renderList() {
+    clear();
+
+    if (!convs.length) { renderEmpty(); return; }
+
+    var ul = el('ul', 'rowlist');
+    ul.setAttribute('aria-label', '历史对话');
+
+    convs.forEach(function (c) {
+      var li = el('li', 'row');
+
+      /* 主操作：进入该会话继续问。
+         标题与元信息一律用 textContent 落字，不拼 HTML —— 标题来自用户输入。 */
+      var open = el('button', 'row__main');
+      open.type = 'button';
+      open.addEventListener('click', function () { location.href = './chat.html'; });
+
+      var t = c.title ? c.title : UNTITLED;
+      var title = el('span', 'row__title' + (c.title ? '' : ' row__title--untitled'), t);
+      open.appendChild(title);
+      open.appendChild(el('span', 'row__meta', c.count + ' 条消息 · ' + relTime(c.ts)));
+
+      var acts = el('div', 'rowacts');
+
+      var ren = el('button', 'rowact rowact--ren');
+      ren.type = 'button';
+      ren.innerHTML = PENCIL;
+      /* 图标钮的动作与对象都要说清 —— 否则读屏里是一串「编辑 编辑 编辑」 */
+      ren.setAttribute('aria-label', '修改名称：' + t);
+      ren.addEventListener('click', function () { askRename(c); });
+
+      var del = el('button', 'rowact rowact--del');
+      del.type = 'button';
+      del.innerHTML = TRASH;
+      del.setAttribute('aria-label', '删除对话：' + t);
+      del.addEventListener('click', function () { askDelete(c); });
+
+      acts.appendChild(ren);
+      acts.appendChild(del);
+      li.appendChild(open);
+      li.appendChild(acts);
+      ul.appendChild(li);
+    });
+
+    list.appendChild(ul);
+  }
+
+  /* 空态三句（§7）：① 空的是什么 ② 为什么会有它 ③ 一个按钮 */
+  function renderEmpty() {
+    clear();
+    var box = el('div', 'empty');
+    box.appendChild(el('p', 'empty__title', '还没有对话记录'));
+    box.appendChild(el('p', 'empty__hint', '你提过的问题会保存在这里'));
+    var a = el('a', 'btn btn--primary', '开始提问');
+    a.href = './chat.html';
+    box.appendChild(a);
+    list.appendChild(box);
+  }
+
+  /* 加载失败：按 §7 报错三句 —— 出了什么事 / 为什么 / 怎么办 */
+  function renderError() {
+    clear();
+    var box = el('div', 'empty');
+    box.appendChild(el('p', 'empty__title', '没能读到对话记录'));
+    box.appendChild(el('p', 'empty__hint', '当前网络不稳定，请检查后重试'));
+    var btn = el('button', 'btn btn--primary', '重新加载');
+    btn.type = 'button';
+    btn.addEventListener('click', function () { showLoading(); });
+    box.appendChild(btn);
+    list.appendChild(box);
+  }
+
+  /* 加载中：三行骨架，保住行高节奏（不是整页转圈） */
+  function renderSkeleton() {
+    clear();
+    var box = el('div', 'rowlist');
+    box.setAttribute('aria-busy', 'true');
+    box.setAttribute('aria-label', '正在加载对话记录');
+    for (var i = 0; i < 3; i++) {
+      var row = el('div', 'skrow');
+      var bars = el('div', 'skrow__bars');
+      bars.appendChild(el('div', 'skeleton'));
+      bars.appendChild(el('div', 'skeleton'));
+      row.appendChild(bars);
+      box.appendChild(row);
+    }
+    list.appendChild(box);
+  }
+
+  /* 骨架 900ms 后落到真实列表 —— 让加载态看得见，又不是死路。
+     ?state=error 是显式预览，所以成功分支恒为 renderList，不掷骰子，
+     否则「重试」会偶尔又回到错误态，演示时像坏了。 */
+  function showLoading() {
+    renderSkeleton();
+    setTimeout(renderList, 900);
+  }
+
+  /* ---- 重命名 -------------------------------------------------------- */
+
+  var renSheet = document.getElementById('ren-sheet');
+  var renInput = document.getElementById('ren-input');
+  var renError = document.getElementById('ren-error');
+  var renId = null;
+
+  function askRename(c) {
+    renId = c.id;
+    /* 无标题的会话预填占位名？不 —— 占位名只是显示用的，当成真标题写回去
+       会把「没有名字」变成「名字叫未命名对话」。所以留空让用户直接输入。 */
+    renInput.value = c.title || '';
+    renError.textContent = '';
+    renInput.removeAttribute('aria-invalid');
+
+    if (typeof renSheet.showModal === 'function') renSheet.showModal();
+    else renSheet.setAttribute('open', '');
+
+    /* 聚焦但**不全选**，光标落在末尾。
+       改名多半是改几个字，不是整段重写；全选状态下随手敲的第一个字符
+       会把原标题整个抹掉，而用户往往到那时才发现旧名字没了。
+       从末尾接着写、想清空自己按删除，比「先毁掉再补救」安全。
+       setSelectionRange 在 focus 之后调，否则某些浏览器会把光标重置回开头。 */
+    renInput.focus();
+    var end = renInput.value.length;
+    renInput.setSelectionRange(end, end);
+  }
+
+  function closeRename() {
+    if (typeof renSheet.close === 'function') renSheet.close();
+    else renSheet.removeAttribute('open');
+    renId = null;
+  }
+
+  function saveRename() {
+    var name = renInput.value.trim();
+    /* 空名会让列表出现一行「未命名对话」，且用户看不出是自己没填还是丢了数据 ——
+       这里挡下来并说清怎么办（§7 报错三句的第三句）。 */
+    if (!name) {
+      renError.textContent = '名称不能为空，请填一个名字再保存。';
+      renInput.setAttribute('aria-invalid', 'true');
+      renInput.focus();
+      return;
+    }
+
+    var target = null;
+    convs.forEach(function (c) { if (c.id === renId) target = c; });
+    if (!target) { closeRename(); return; }
+
+    if (target.title === name) { closeRename(); return; }   /* 没改就不写库 */
+
+    target.title = name;
+    save();
+    closeRename();
+    /* 结果看得见（标题当场变了），按 §7 不弹提示条，只给读屏播报 */
+    liveEl.textContent = '已改名为' + name;
+    renderList();
+  }
+
+  document.getElementById('ren-cancel').addEventListener('click', closeRename);
+  document.getElementById('ren-ok').addEventListener('click', saveRename);
+  /* 手机上键盘的「完成」= 保存 */
+  renInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+  });
+  /* 边输边清错误：错误还挂着但用户已经在改了，留着红框会让人以为没生效 */
+  renInput.addEventListener('input', function () {
+    if (renError.textContent) {
+      renError.textContent = '';
+      renInput.removeAttribute('aria-invalid');
+    }
+  });
+
+  /* ---- 删除 ---------------------------------------------------------- */
+
+  function askDelete(c) {
+    pendingId = c.id;
+    delName.textContent = c.title || UNTITLED;
+    if (typeof sheet.showModal === 'function') sheet.showModal();
+    else sheet.setAttribute('open', '');
+  }
+
+  function closeSheet() {
+    if (typeof sheet.close === 'function') sheet.close();
+    else sheet.removeAttribute('open');
+    pendingId = null;
+  }
+
+  document.getElementById('del-cancel').addEventListener('click', closeSheet);
+
+  document.getElementById('del-ok').addEventListener('click', function () {
+    var id = pendingId;
+    closeSheet();
+
+    /* 演示：?state=delfail 强制走一次失败分支 */
+    var fails = failNextDelete;
+    if (fails) failNextDelete = false;
+
+    var idx = -1;
+    convs.forEach(function (c, i) { if (c.id === id) idx = i; });
+    if (idx < 0) return;
+
+    var before = convs.slice();
+    convs.splice(idx, 1);
+    if (fails) {
+      convs = before;
+      /* 删除失败时结果不可见（行还在），按 §7 用反馈条说明 */
+      toast('没能删除。请稍后再试。');
+      return;
+    }
+
+    save();
+    /* 成功不弹提示条 —— 行已经消失，结果看得见；只给读屏播报一句 */
+    liveEl.textContent = '已删除';
+    renderList();
+  });
+
+  /* ---- 启动 ---------------------------------------------------------- */
+
+  /* 先读库，再按 state 分支渲染。
+     读库必须无条件先做：错误态点「重新加载」走到 renderList 时，
+     若此时还没 load，convs 仍是空的，重试成功也会显示成空态。 */
+  load();
+
+  if (state === 'reset') {
+    convs = seed();
+    save();
+    renderList();
+    return;
+  }
+
+  if (state === 'error')   { renderError(); return; }
+  if (state === 'loading') { showLoading(); return; }
+
+  if (state === 'empty') {
+    /* 空态预览只渲染不写库，免得演示完数据真没了 */
+    renderEmpty();
+    return;
+  }
+
+  renderList();
+})();
+</script>
+</body>
+</html>
