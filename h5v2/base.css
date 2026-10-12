@@ -168,6 +168,7 @@ dialog:focus-visible { outline: none; }
 /* 首页态：占屏约 40%，底部渐隐以便问候语压在上层仍可读 */
 .figure {
   position: relative;
+  isolation: isolate;      /* 建层叠上下文，::before 的 z-index:-1 光晕才落在形象之后而非页面背景后 */
   width: 100%;
   height: var(--figure-hero);
   display: grid; place-items: end center;
@@ -736,7 +737,7 @@ dialog:focus-visible { outline: none; }
 .btn--gradient { background: var(--grad-brand); color: var(--on-brand); box-shadow: var(--sh-brand); }
 .btn--ghost { background: var(--surface); color: var(--brand); box-shadow: var(--sh-btn); }
 .btn--quiet { background: var(--brand-soft); color: var(--brand); }
-.btn--danger { background: var(--danger); color: #FFFFFF; }
+.btn--danger { background: var(--danger); color: var(--on-brand); }
 .btn--block { display: flex; width: 100%; }
 .btn--sm { min-height: var(--h-pill); padding-inline: var(--sp-md); font-size: var(--text-xs); }
 
@@ -889,6 +890,25 @@ dialog.sheet::backdrop { background: var(--overlay); }
     z-index: -1;              /* 遮罩压在弹层之下 */
   }
   dialog.sheet[open] > * { position: relative; }   /* 内容抬到遮罩之上 */
+  /* .modal 变体同口径兜底 —— 上面只覆盖了 .sheet，居中的二维码/登录弹层
+     在老内核下会落入文档流（无遮罩、不居中）。inset:0 + height:fit-content
+     配 dialog.modal 已有的 margin:auto 即可居中；shortcut: 依赖 fit-content，
+     升级到需支持 Chrome<46 时改 top/left 50% 方案。 */
+  dialog.modal[open] {
+    position: fixed;
+    inset: 0;
+    height: fit-content;
+    z-index: var(--z-modal);
+    display: block;
+  }
+  dialog.modal[open]::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: var(--overlay);
+    z-index: -1;
+  }
+  dialog.modal[open] > * { position: relative; }
 }
 dialog.sheet h2 { font-size: var(--text-md); }
 dialog.sheet p { margin-top: var(--sp-xs); font-size: var(--text-base); color: var(--ink-2); }
@@ -902,7 +922,8 @@ dialog.sheet .cluster .btn { flex: 1 1 0; }
    两者共用同一套背板、圆角、阴影令牌，不新增颜色尺寸。 */
 dialog.modal {
   /* position: relative —— 弹层内的绝对定位元素（如 .toast）要拿它当包含块。
-     原生 dialog 默认 static，不写这条，里面的 absolute 会以页面为参照。 */
+     原生 dialog 开启时是 fixed、关闭时是 absolute，都不是 static；
+     不写这条，里面的 absolute 会以视口/初始包含块为参照。 */
   position: relative;
   width: calc(100% - var(--sp-xl) * 2);
   max-width: var(--measure);
@@ -972,7 +993,7 @@ dialog.modal .cluster .btn { flex: 1 1 0; }
 .field__help { margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--ink-3); }
 .field__error {
   margin-top: var(--sp-2xs); font-size: var(--text-xs); color: var(--danger);
-  min-height: 1lh;   /* 错误容器不塌陷，出现时不跳版 */
+  min-height: 1.7em;   /* 错误容器不塌陷，出现时不跳版；1lh 老内核不支持，用 em 兜底 */
 }
 
 /* ==========================================================================

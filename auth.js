@@ -21,7 +21,7 @@
   'use strict';
 
   var KEY = 'skl.user';
-  var CODE_MS = 60000;      /* 重发倒计时（秒）*/
+  var CODE_MS = 60000;      /* 重发倒计时（毫秒）*/
 
   /* ---------------------------------------------------------- 演示账号
      演示站没有后端，真短信与真校验都不存在。所以：
@@ -207,6 +207,7 @@
   }
 
   function startCountdown() {
+    if (timer) clearInterval(timer);   /* 倒计时未走完又进来：先清旧的，别留孤儿 interval */
     countdown = CODE_MS / 1000;
     els.send.disabled = true;
     tick();
@@ -283,6 +284,10 @@
 
   global.Auth = {
     get: get,
+    set: set,                                  /* 改手机号页写回登录态，别再直写 skl.user */
+    CODE_MS: CODE_MS,                          /* 改手机号页倒计时，与登录弹层同为 60s */
+    isDemoAccount: isDemoAccount,              /* 页面别自带演示号常量 */
+    isDemoCode: function (code) { return code === DEMO_CODE; },
     logout: logout,
     isLoggedIn: isLoggedIn,
     isWeChat: isWeChat,

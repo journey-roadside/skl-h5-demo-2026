@@ -83,9 +83,7 @@ body { background: #E9E8F2; }
 .toprow { display: flex; justify-content: flex-end; padding: var(--sp-md) var(--pad-end) 0; }
 .listening { display: flex; align-items: center; gap: var(--sp-sm);
              padding: var(--sp-md) var(--pad-end) 0 var(--pad-start); }
-.bar__title { flex: 1 1 auto; min-width: 0; }
-.bar__title h1 { font-size: var(--text-md); }
-.flowpad { padding-inline: var(--pad-end) var(--pad-start); }
+.bar__title { flex: 1 1 auto; min-width: 0; font-size: var(--text-md); font-weight: var(--w-head); }
 
 /* 检查清单 */
 .checklist { background: var(--surface); border-radius: var(--r-card); padding: var(--sp-lg);
@@ -125,8 +123,8 @@ body { background: #E9E8F2; }
         <div class="tok__name">按下态 brand-deep</div><div class="tok__val">--brand-deep #443DD6</div></div>
       <div class="tok"><div class="tok__chip" style="background:#1E1B33"></div>
         <div class="tok__name">主文字 ink</div><div class="tok__val">--ink #1E1B33</div></div>
-      <div class="tok"><div class="tok__chip" style="background:#7A76A0"></div>
-        <div class="tok__name">说明文字 ink-3</div><div class="tok__val">--ink-3 #7A76A0</div></div>
+      <div class="tok"><div class="tok__chip" style="background:#6A668F"></div>
+        <div class="tok__name">说明文字 ink-3</div><div class="tok__val">--ink-3 #6A668F</div></div>
       <div class="tok"><div class="tok__chip" style="background:#E4E2F5"></div>
         <div class="tok__name">分隔线 line</div><div class="tok__val">--line #E4E2F5</div></div>
       <div class="tok"><div class="tok__chip" style="background:#D93A34"></div>
@@ -366,7 +364,7 @@ body { background: #E9E8F2; }
               <span class="figure figure--dock">
                 <img class="figure__img" src="assets/avatars/avatar-02.png" alt="" width="44" height="44">
               </span>
-              <span class="bar__title"><h1>社科数据助手</h1></span>
+              <span class="bar__title">社科数据助手</span>
               <button class="pill">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
@@ -723,6 +721,8 @@ body { background: #E9E8F2; }
     /* 左：切模式。切走时把录音态收干净，避免留下一个"录着"的按钮 */
     modeBtn.addEventListener('click', function () {
       if (timer) { clearTimeout(timer); timer = null; }
+      if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
+      busy = false;
       rec = 'off';
       mode = (mode === 'voice') ? 'keyboard' : 'voice';
       render();

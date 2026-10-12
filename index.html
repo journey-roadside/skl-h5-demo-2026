@@ -82,6 +82,7 @@ body {
 .figure--hero {
   max-width: 300px;   /* 固定几何：避免平板宽度下形象被拉成巨幅 */
   margin: var(--sp-sm) auto 0;
+  height: clamp(190px, calc(100vh - 578px), var(--figure-hero));    /* 老内核无 dvh：先给 vh 兜底 */
   height: clamp(190px, calc(100dvh - 578px), var(--figure-hero));
   /* 行高必须显式定为容器高。
      .figure 是 grid，隐式行高为 auto 时会被图片内容撑到 300px，
@@ -596,16 +597,23 @@ dialog.modal.qrsheet h2 {
     'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<path d="M20 6L9 17l-5-5"/></svg>';
 
+  /* 拼 innerHTML 前转义：当前数据是硬编码的，接真实接口下发时这里就是 XSS/属性破坏点 */
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
   function renderOptions() {
     list.innerHTML = AVATARS.map(function (a, i) {
       return '<button class="picker__opt" type="button" data-index="' + i + '" ' +
              'aria-pressed="' + (i === current) + '">' +
                '<span class="picker__thumb">' +
-                 '<img src="' + a.src + '" alt="" width="56" height="56">' +
+                 '<img src="' + esc(a.src) + '" alt="" width="56" height="56">' +
                '</span>' +
                '<span class="picker__body">' +
-                 '<span class="picker__name">' + a.name + '</span>' +
-                 '<span class="picker__desc">' + a.desc + '</span>' +
+                 '<span class="picker__name">' + esc(a.name) + '</span>' +
+                 '<span class="picker__desc">' + esc(a.desc) + '</span>' +
                '</span>' +
                CHECK_SVG +
              '</button>';
@@ -687,14 +695,16 @@ dialog.modal.qrsheet h2 {
   var recognizeTimer = null;
   var toastTimer = null;
 
-  function isRecording() { return state === 'recording'; }
+  /* 「忙」= 任何非 idle 态（recording / recognizing）。识别中的 2s 里也要拦住
+     形象切换与键盘输入，否则会叠出双弹层或跳走丢掉待确认的提问。 */
+  function isBusy() { return state !== 'idle'; }
 
   /* 录音期间要做两件事：视觉上压暗到不可用，交互上拦住并给出原因。
      只压暗不拦、或只拦不压暗，都会让用户以为是页面坏了。
      键盘钮是 <a href>，还要摘掉 href 与 tabindex，
      否则键盘与读屏用户仍能 Tab 过来再回车跳走。 */
   function setBlocked() {
-    var blocked = isRecording();
+    var blocked = isBusy();
     [keyboardBtn, changeAvatarBtn].forEach(function (el) {
       el.classList.toggle('is-blocked', blocked);
       el.setAttribute('aria-disabled', String(blocked));
@@ -754,6 +764,7 @@ dialog.modal.qrsheet h2 {
 
   /* ---- 三处联动的状态渲染 ---- */
   function render(next) {
+    if (recognizeTimer) { clearTimeout(recognizeTimer); recognizeTimer = null; }
     state = next;
     var rec = next === 'recording';
     var busy = next === 'recognizing';
@@ -823,14 +834,14 @@ dialog.modal.qrsheet h2 {
 
   /* 录音期间的互斥保护。键盘钮是 <a href>，摘掉 href 才能真正拦住导航；
      形象切换钮是 button，靠这里拦住。两处都给同一条提示。 */
-  var BLOCKED_MSG = '正在录音';
+  var BLOCKED_MSG = '正在处理，请稍候';
   keyboardBtn.addEventListener('click', function (e) {
-    if (!isRecording()) return;
+    if (!isBusy()) return;
     e.preventDefault();
     toast(BLOCKED_MSG);
   });
   changeAvatarBtn.addEventListener('click', function (e) {
-    if (!isRecording()) return;
+    if (!isBusy()) return;
     e.stopImmediatePropagation();
     toast(BLOCKED_MSG);
   }, true);   /* 捕获阶段先拦，避免又把选择弹层推开 */
@@ -848,6 +859,11 @@ dialog.modal.qrsheet h2 {
     /* 文本经 sessionStorage（并带 ?q=）交给对话页，由那边作为首条提问发出 */
     closeSheet();
     goChat(text);
+  });
+
+  /* 页面隐藏/卸载时清掉在途的识别定时器，别让它在页外再弹转写弹窗 */
+  window.addEventListener('pagehide', function () {
+    if (recognizeTimer) { clearTimeout(recognizeTimer); recognizeTimer = null; }
   });
 
   /* 启动：读回上次选的形象，再进入 idle */

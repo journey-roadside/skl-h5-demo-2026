@@ -193,22 +193,33 @@
   /* ---- 脱敏手机号：保留前 4 与后 4，中间打星。
      不用固定 4 颗星 —— 那样眼睛没法校验长度，且不同位数的号码看起来一样。 */
   function maskPhone(p) {
-    if (!p || p.length < 8) return p || '—';
-    return p.slice(0, 4) + new Array(p.length - 7).join('*') + p.slice(-4);
+    if (!p || p.length < 8) return '—';   /* 位数不够脱不干净，宁可不显示也不泄露全号 */
+    return p.slice(0, 4) + new Array(Math.max(1, p.length - 7)).join('*') + p.slice(-4);
   }
 
   /* ---- 环境分流 ---- */
   var user = Auth.get() || {};
   var isWx = Auth.isWeChat();
 
+  /* 非微信端要求已登录：本页对访客没有可看的内容，未登录就回首页走登录。
+     微信端身份由公众号授权给，不受此限（与 Auth.require 同一口径）。 */
+  if (!isWx && !user.phone) {
+    location.replace('./index.html');
+    return;
+  }
+
   if (isWx) {
     document.documentElement.classList.add('is-wx');
     /* 微信身份占位：真实场景取授权返回的昵称与头像 URL。
        演示站拿不到，用默认昵称；头像数据缺失时退回内置图形。 */
     document.getElementById('wx-name').textContent = user.nickname || '微信用户';
-    if (user.avatar) {
+    /* 头像 URL 来自 localStorage（可被本机脚本改），只放行 https 与同源相对地址，
+       避免指向外部源被当追踪像素或注入 data: 内容。 */
+    var av = user.avatar || '';
+    var safeAv = /^https:\/\//i.test(av) || /^(\.\.?\/|[\w.-]+\/)/.test(av) ? av : '';
+    if (safeAv) {
       var img = document.querySelector('[data-wx-avatar]');
-      img.src = user.avatar;
+      img.src = safeAv;
       img.hidden = false;
       /* 必须走 setAttribute，不能写 `.hidden = true` ——
          SVGElement 没有 hidden 属性（它在 HTMLElement 上），

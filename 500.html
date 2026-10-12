@@ -61,21 +61,13 @@
     <h1 class="status__title">服务暂时不可用</h1>
     <p class="status__hint">服务器出现异常。请稍后重新加载。</p>
 
-    <!-- 重新加载走 JS：纯 <a href=""> 在不支持的浏览器里是空跳转，必须留兜底 -->
-    <button class="btn btn--primary" type="button" id="retry">重新加载</button>
+    <!-- 重新加载：href="" 原生重载当前地址，不依赖 JS（脚本被拦时仍然可点）。
+         用 <a> 而非 <button>+JS —— 后者在 JS 失效时就是一粒死按钮。 -->
+    <a class="btn btn--primary" href="">重新加载</a>
     <a class="linklike status__back" href="./index.html">回到首页</a>
 
   </main>
 </div>
 
-<script>
-(function () {
-  'use strict';
-
-  document.getElementById('retry').addEventListener('click', function () {
-    location.reload();
-  });
-})();
-</script>
 </body>
 </html>
