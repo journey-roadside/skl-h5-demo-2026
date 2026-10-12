@@ -45,25 +45,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return None
         return super().send_head()
 
-    def do_GET(self):
+    def _resolve_extension(self):
         # /chat 与 /chat.html 都能命中同一个文件。
         # 只补扩展名，不做重定向 —— 重定向才会丢查询串。
         path = self.path.split('?', 1)[0]
-        if not os.path.splitext(path)[1]:
-            candidate = os.path.join(ROOT, path.lstrip('/') + '.html')
-            if os.path.isfile(candidate):
-                # 把 path 换掉、query 原样留着
-                self.path = path + '.html' + self.path[len(path):]
+        if os.path.splitext(path)[1]:
+            return
+        # 规范化后再比对，确保「检查的文件」正是「服务端会返回的文件」。
+        candidate = os.path.realpath(os.path.join(ROOT, path.lstrip('/') + '.html'))
+        if not candidate.startswith(ROOT + os.sep):
+            return
+        if os.path.isfile(candidate):
+            # 把 path 换掉、query 原样留着
+            self.path = path + '.html' + self.path[len(path):]
+
+    def do_GET(self):
+        self._resolve_extension()
         super().do_GET()
 
-    def log_message(self, fmt, *args):
-        # 默认日志刷屏，只留错误
-        if not args or str(args[1] if len(args) > 1 else '').startswith('2'):
+    def do_HEAD(self):          # 与 GET 同口径，探活/缓存行为一致
+        self._resolve_extension()
+        super().do_HEAD()
+
+    def log_request(self, code='-', size='-'):
+        # 默认日志刷屏，只留错误（2xx / 3xx 成功类不记）
+        if str(code).startswith(('2', '3')):
             return
-        super().log_message(fmt, *args)
+        super().log_request(code, size)
 
 
 if __name__ == '__main__':
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8791
+    try:
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 8791
+    except ValueError:
+        sys.exit('端口必须是数字，例如：python dev-server.py 8791')
+    if not 1 <= port <= 65535:
+        sys.exit('端口需在 1–65535 之间')
     host = sys.argv[2] if len(sys.argv) > 2 else '127.0.0.1'
     http.server.ThreadingHTTPServer((host, port), Handler).serve_forever()

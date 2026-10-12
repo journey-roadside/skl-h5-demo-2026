@@ -14,7 +14,7 @@
 
    状态覆盖（父仓库 05-Design/SKLQ2-H5端页面流程图.md §3）：
    空列表 / 加载中 / 加载失败 / 无标题 / 删除确认 / 删除成功 / 删除失败。
-   演示态用 ?state= 切换：loading · error · empty · delfail（见脚本）。
+   演示态用 ?state= 切换：loading · error · empty · delfail · reset（见脚本）。
 
    类名全部走 base.css（.pagehead / .rowlist / .row / .empty / .skeleton /
    dialog.sheet / .toast），本文件只写页面级补充，不改组件数值。
@@ -177,7 +177,7 @@
   /* ======================================================================
      历史对话列表
      数据是演示用的：存在 localStorage 的 skl.convs，首次访问播种。
-     删掉能真的删掉、刷新还在，演示才有实感；?reset=1 可恢复初始数据。
+     删掉能真的删掉、刷新还在，演示才有实感；?state=reset 可恢复初始数据。
      真实接口接入时替换 load() 一处即可，渲染与交互不动。
 
      已知边界（不在本页范围）：对话页尚未按 id 读回多轮内容，
@@ -185,6 +185,8 @@
      ====================================================================== */
 
   var KEY = 'skl.convs';
+  /* 播种哨兵：是否首次访问看它，不看数据是否为空（见 load 注释，#24） */
+  var SEEDED_KEY = 'skl.convs.seeded';
   var state = '';
   try { state = (new URLSearchParams(location.search).get('state') || '').trim(); } catch (err) { state = ''; }
 
@@ -194,6 +196,7 @@
   var toastEl = document.getElementById('toast');
   var liveEl = document.getElementById('live');
   var toastTimer = null;
+  var loadTimer = null;
   var pendingId = null;
   /* 演示开关：?state=delfail 时下一次删除失败，用来展示删除失败态 */
   var failNextDelete = (state === 'delfail');
@@ -203,6 +206,13 @@
     toastEl.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2400);
+  }
+
+  /* 读屏播报：赋相同字符串不会再次播报 —— 连续删第二条时会静默（#28）。
+     先清空、下一帧再写入，让每次都是「新内容」。 */
+  function announce(msg) {
+    liveEl.textContent = '';
+    setTimeout(function () { liveEl.textContent = msg; }, 30);
   }
 
   /* ---- 返回 ----------------------------------------------------------
@@ -251,11 +261,40 @@
   var convs = [];
 
   function load() {
+    /* 播种按「是否首次访问」判断，而不是「数据是否为空」：
+       否则用户删光会话写入 [] 后，下次加载又会把演示数据种回来，
+       删除永不落库、真空态不可达（#24）。 */
+    var seeded = false;
+    try { seeded = localStorage.getItem(SEEDED_KEY) === '1'; } catch (err) { seeded = false; }
+
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (err) { raw = null; }
 
     try { convs = raw ? JSON.parse(raw) : []; } catch (err) { convs = []; }
-    if (!Array.isArray(convs) || !convs.length) convs = seed();
+    if (!Array.isArray(convs)) convs = [];
+
+    if (!seeded && !convs.length) {
+      convs = seed();
+      save();
+      try { localStorage.setItem(SEEDED_KEY, '1'); } catch (err2) { /* 无痕模式，忽略 */ }
+      return;
+    }
+
+    /* 迁移：早于哨兵机制的安装已有数据但无哨兵，补置一次，
+       否则删光后重载会复活演示数据（#24 的迁移边界）。 */
+    if (!seeded && convs.length) {
+      try { localStorage.setItem(SEEDED_KEY, '1'); } catch (err3) { /* 无痕模式，忽略 */ }
+    }
+
+    /* 逐项校验：非法 ts 会渲染成「NaN 个月前」，重复 id 会让删除/重命名
+       命中错对象（#25）。结构不合规的项直接丢弃。 */
+    var seen = {};
+    convs = convs.filter(function (c) {
+      if (!c || typeof c.id !== 'string' || !c.id || seen[c.id]) return false;
+      if (typeof c.ts !== 'number' || !isFinite(c.ts)) return false;
+      seen[c.id] = true;
+      return true;
+    });
   }
 
   function seed() {
@@ -401,7 +440,9 @@
      否则「重试」会偶尔又回到错误态，演示时像坏了。 */
   function showLoading() {
     renderSkeleton();
-    setTimeout(renderList, 900);
+    /* 存句柄：错误态连点「重新加载」会叠加多个 renderList（#27） */
+    if (loadTimer) clearTimeout(loadTimer);
+    loadTimer = setTimeout(function () { loadTimer = null; renderList(); }, 900);
   }
 
   /* ---- 重命名 -------------------------------------------------------- */
@@ -459,7 +500,7 @@
     save();
     closeRename();
     /* 结果看得见（标题当场变了），按 §7 不弹提示条，只给读屏播报 */
-    liveEl.textContent = '已改名为' + name;
+    announce('已改名为' + name);
     renderList();
   }
 
@@ -467,7 +508,12 @@
   document.getElementById('ren-ok').addEventListener('click', saveRename);
   /* 手机上键盘的「完成」= 保存 */
   renInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+    /* 排除输入法组合态：中文输入法按 Enter 是「上屏候选词」，
+       否则会误触发保存（#26）。 */
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      saveRename();
+    }
   });
   /* 边输边清错误：错误还挂着但用户已经在改了，留着红框会让人以为没生效 */
   renInput.addEventListener('input', function () {
@@ -517,7 +563,7 @@
 
     save();
     /* 成功不弹提示条 —— 行已经消失，结果看得见；只给读屏播报一句 */
-    liveEl.textContent = '已删除';
+    announce('已删除');
     renderList();
   });
 

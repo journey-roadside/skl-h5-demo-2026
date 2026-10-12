@@ -666,6 +666,10 @@ html {
   /* 点提示词：只填入输入框，不直接发送 —— 用户常常想改一两个字再问。
      发出去就收不回来了，填进去还能改。光标给到末尾，接着打字即可。 */
   function pickPrompt(text) {
+    /* 语音分支一并收干净：在途 recTimer 迟到（约 1.2s 后）会把刚填入的
+       提示词覆盖成识别文案（#30）。 */
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    rec = 'off';
     if (mode !== 'keyboard') { mode = 'keyboard'; renderComposer(); }
     input.value = text;
     /* 脚本赋值**不触发** input 事件，发送钮的可用态就同步不过去 ——
@@ -768,6 +772,7 @@ html {
   var speaking = false;      /* 是否有播报在进行 */
   var speakingBubble = null; /* 正在播的那条 AI 气泡 */
   var speakTimer = null;     /* TTS 不可用时的兜底计时（按文字长度估时长） */
+  var currentUtter = null;   /* 当前 utterance：被 cancel 的旧条不准再收状态（见 #32） */
 
   /* 播报模拟时长：按字数估，中文约每字 0.22s，两端各留一点起停余量。
      仅在没有 speechSynthesis 时用（见 speak()）。 */
@@ -803,8 +808,11 @@ html {
         tts.cancel();
         var u = new SpeechSynthesisUtterance(text);
         u.lang = 'zh-CN';
-        u.onend = stopSpeaking;
-        u.onerror = stopSpeaking;   /* 被系统打断 / 不支持中文语音，都收状态 */
+        /* cancel() 的旧条仍会触发 onend/onerror；只有当前条允许收状态，
+           否则旧条会把刚开始的新播报误停（#32）。 */
+        u.onend = function () { if (u === currentUtter) stopSpeaking(); };
+        u.onerror = function () { if (u === currentUtter) stopSpeaking(); };
+        currentUtter = u;
         tts.speak(u);
       } catch (e) { /* 落到下面的兜底计时器 */ }
     }
@@ -813,6 +821,7 @@ html {
   }
 
   function stopSpeaking() {
+    currentUtter = null;
     if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; }
     if (window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch (e) {}
@@ -832,14 +841,24 @@ html {
   /* 生成中的定时器要能被「停止」清掉，所以留在外面（原先是匿名 setTimeout） */
   var aiTimer = null;
 
-  /* AI 气泡的完整结构：正文 + 来源行（含本条播报钮）。
+  /* AI 气泡的正文与来源行：正文/来源用 textContent 落字（#33），
+     将来回答来自服务端也不会变成 XSS 汇聚点；只有固定图标走 innerHTML。
      来源行里塞一个按钮，所以 .bubble__src 在本页被改成 flex（见页内样式）。 */
-  function aiBubbleHTML() {
-    return '<span class="bubble__text">' + DEMO_ANSWER_TEXT + '</span>'
-         + '<span class="bubble__src"><span>' + DEMO_ANSWER_SRC + '</span>'
-         + '<button class="speakbtn" type="button" data-speak aria-label="播报本条回复">'
-         + SPEAK_ICO_PLAY
-         + '</button></span>';
+  function fillAiBubble(bubble) {
+    var text = el('span', 'bubble__text');
+    text.textContent = DEMO_ANSWER_TEXT;
+    bubble.appendChild(text);
+
+    var src = el('span', 'bubble__src');
+    var srcText = el('span');
+    srcText.textContent = DEMO_ANSWER_SRC;
+    src.appendChild(srcText);
+    var btn = el('button', 'speakbtn', SPEAK_ICO_PLAY);
+    btn.type = 'button';
+    btn.setAttribute('data-speak', '');
+    btn.setAttribute('aria-label', '播报本条回复');
+    src.appendChild(btn);
+    bubble.appendChild(src);
   }
 
   function addAi() {
@@ -854,7 +873,7 @@ html {
       if (typing) {
         typing.classList.remove('bubble--typing');
         typing.removeAttribute('aria-label');
-        typing.innerHTML = aiBubbleHTML();
+        fillAiBubble(typing);
         /* 回复完成即自动播报本条（用户明确要求）。
            stopAi 里已清掉 aiTimer 并 null，所以走这条路的 bubble 一定是完整回复。 */
         startSpeaking(typing, DEMO_ANSWER_TEXT);
@@ -917,7 +936,9 @@ html {
     text = (text || '').trim();
     if (!text || busy) return;
 
-    Auth.require(function () { doSend(text); });
+    /* 登录回调是异步的（Auth.require），登录期间连按回车会排队多个回调；
+       回调里复查 busy，只让第一个真正发出去，避免重复气泡 + 重复回复（#31）。 */
+    Auth.require(function () { if (busy) return; doSend(text); });
   }
 
   function doSend(text) {
@@ -933,8 +954,13 @@ html {
 
   /* ---- 输入条 · 键盘态 ---- */
   input.addEventListener('keydown', function (e) {
-    /* 系统键盘的「发送」键与回车都走这里 */
-    if (e.key === 'Enter') { e.preventDefault(); send(input.value); }
+    /* 系统键盘的「发送」键与回车都走这里。
+       排除输入法组合态：中文输入法按 Enter 是「上屏候选词」，不是发送，
+       否则半成品文本会被提前发出去（#29）。 */
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      send(input.value);
+    }
   });
 
   /* 输入内容变化即时反映到发送钮的可用态。
