@@ -38,7 +38,7 @@
 
   --ink:          #1E1B33;   /* 主文字 */
   --ink-2:        #4A4666;   /* 次级文字 */
-  --ink-3:        #6A668F;   /* 说明 / 时间 / 合规行 */
+  --ink-3:        #7A76A0;   /* 说明 / 时间 / 合规行 */
   --ink-on-dark:  #ECEBF5;   /* 深底上的文字 */
 
   --line:         var(--mist-4);
@@ -130,8 +130,8 @@
   --sp-2xl: 48px;
   --sp-3xl: 64px;
   /* 段落间距：工信部适老化规范要求段落间距 ≥ 行距 ×1.3。
-     用 calc 跟行距走，字号档位放大时仍满足（1rem 档位下 ≈35.4px）。 */
-  --sp-para: calc(1.3 * 1rem * var(--lh-body));
+     正文 16 × 1.7 = 27.2px，×1.3 = 35.4px，取 36px。 */
+  --sp-para: 36px;
 
   /* ------------------------------------------------------------------ *
    * 8 · 尺度与盒模型 —— H5 竖屏优先
@@ -143,7 +143,7 @@
   --pad-end:    max(var(--gutter), var(--safe-right));
   --measure:    34em;                                  /* 中文正文行宽 ≈26–32 字 */
   --h-tap:      44px;                                  /* 最小热区；靠 min-height 撑开 */
-  --h-pill:     36px;                                  /* 胶囊 / 页头小图标钮的可见形体高度；热区另由 ::before 撑到 --h-tap 44px */
+  --h-pill:     36px;                                  /* 胶囊 / 页头小图标钮：次级动作的高度 */
   --h-control:  44px;                                  /* 输入与按钮共用基准高 */
   --h-input:    48px;
   --h-tabbar:   56px;
@@ -222,13 +222,13 @@
     --ink-3:       #8C89A6;
     --ink-on-dark: #ECEBF5;
 
-    --line:        var(--mist-4);
+    --line:        #2E2C40;
     --line-strong: #3D3A55;
     --overlay:     rgba(8, 7, 14, 0.62);
 
     --brand:       #8B84F2;
     --brand-deep:  #7A72EC;
-    --brand-soft:  var(--mist-3);
+    --brand-soft:  #2A2743;
     --on-brand:    #14131F;   /* 深色下品牌色变浅，压在上面的文字必须翻深 */
     --focus:       #A79CFA;
 
