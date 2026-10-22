@@ -1,0 +1,1823 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>数字人对话 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   首页 · Companion-Hero —— 见 h5v2/DESIGN.md §4.1
+   骨架：顶部切换形象 → 数字人形象位 → 问候语 → 收音波形 →
+         AI 标识合规行 → 底部圆形操作区
+
+   本文件只写结构与页面级变体类，不覆写 base.css 的组件样式（§12）。
+   ========================================================================== */
+
+/* 隐藏滚动条，但保留滚动能力。
+   移动端本来不画滚动条，这里只处理桌面浏览器预览与部分安卓 WebView
+   （Chromium 会在右侧画一条常驻条，截图与真机观感都对不上）。
+   注意不是 overflow: hidden —— 那会把滚动一起禁掉，
+   也是体系 §11 明令禁止的横向溢出兜底写法。
+   微信 X5 是 Chromium 内核走 ::-webkit-scrollbar，Firefox 走 scrollbar-width。 */
+html {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* 旧 Edge / IE 内核 */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 顶部雾光铺在 body 上，由画布铺满整个视口宽度。
+   不能画在 .home 上：.h5 有 max-inline-size: var(--w-content)（640px），
+   宽屏下正文列居中，画在列上则两侧露出 body 的纯底色 --canvas，
+   看起来就是"左右两片空白"。铺到 body 后，任何宽度下渐变都连续。
+   微信内视口本来就窄于 640px，效果与改动前一致。
+   形象背后那圈品牌柔光由 base.css 的 .figure::before 提供，
+   这里不叠 --grad-aura，否则同一处渐变会重影。 */
+body {
+  background: var(--grad-hero);
+}
+
+.home__main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--sp-md);
+  /* 内容超出视口时整页滚动（§9「页面必须能滚」），不做固定高度 */
+}
+
+/* 顶部工具行：切换形象。这里不重绘微信导航栏，只是一个页内动作。 */
+.toprow {
+  display: flex;
+  /* 两端对齐：AI 标识贴左、切换形象贴右。只有胶囊时有它自己在右端。 */
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+/* 这行 AI 标识挤在页头，不该再用 base.css 那份 12px 上下 padding：
+   那套是为「独立成行、居中陈列」写的，放在 toprow 里会把行高撑到 46px，
+   比胶囊(36px)还高、整行重心被拉下去。这里压成纯文字行。 */
+.toprow .aiflag {
+  padding: 0;
+  text-align: left;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+
+/* 切换形象：窄屏是纯图标圆钮，≥375 恢复成「图标 + 文字」胶囊。
+   窄屏省横向空间（页头这行还挤着 AI 标识），宽屏文案回来、指示更明确。
+   基类 .pill 是胶囊形态（padding 0 16px、min-height 36px、gap 4px），
+   圆钮下必须把这三样一起收掉，否则是个被撑宽的椭圆。
+   尺寸与形状对齐 .iconbtn 的圆钮语言：--h-pill 直径、1:1、border-radius 999px。 */
+.pill--icon {
+  width: var(--h-pill);
+  min-width: var(--h-pill);      /* 基类 min-height 只管纵向，横向要自己锁 */
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  aspect-ratio: 1 / 1;           /* 保证是正圆而不是椭圆 */
+  border-radius: var(--r-pill);
+}
+/* 图标在圆钮里可以比胶囊里大一点：14px 在 36px 圆里显得偏小 */
+.pill--icon svg { width: 18px; height: 18px; }
+.pill__label { display: none; }
+
+/* ≥375：文字回来、形状回到基类的胶囊。只覆盖圆钮那几条，其余仍走 .pill。
+   375 取自竖屏主流宽度（iPhone 全系）——320/360 仍留圆钮，避免页头挤成一团。 */
+@media (min-width: 375px) {
+  .pill--icon {
+    width: auto;
+    min-width: auto;
+    padding: 0 var(--sp-md);
+    gap: var(--sp-2xs);
+    justify-content: flex-start;
+    aspect-ratio: auto;
+  }
+  /* 图标回到基类口径：胶囊里 18px 会盖过文字、抢视觉重心 */
+  .pill--icon svg { width: 14px; height: 14px; }
+  .pill__label { display: inline; }
+}
+
+/* 主体内容在「胶囊以下、按钮以上」的剩余空间里垂直居中。
+   用前后两个弹性占位实现，而不是 justify-content: center ——
+   居中溢出是双向的，内容高于容器时顶部会被推出视口且永远滚不到。
+   弹性占位在空间不足时收缩为 0，内容自然从顶部开始并正常滚动。 */
+.home__stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.home__stage::before,
+.home__stage::after {
+  content: "";
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* 形象位：固定几何舞台（§9.1 允许写死的场景之一）。
+   高度是「视口扣掉其余全部内容」后的剩余量：
+     369px = 上内边距(16) + 顶行胶囊(36) + 形象上边距(12) + 问候语区(110)
+           + 收音行(91) + 底部按钮让位(104)
+           （实测值，改文案或改问候语区/收音行高度后需重新实测）
+   **收音行是 91 不是 56**：波形 40 + 间距 8 + 状态文字 27 + 上内边距 16。
+   早先按 56 记，导致 320×568 / 360×640 各溢出 35px / 15px。
+   注：AI 标识已并入顶行，不再单独占纵向空间。
+   宽屏/高屏时撑到基准 286px（--figure-hero）；矮屏先压形象，
+   压到 190px 为止，再不够才整页滚动。这样首屏始终是「一屏叙事」。 */
+.figure--hero {
+  max-width: 300px;   /* 固定几何：避免平板宽度下形象被拉成巨幅 */
+  margin: var(--sp-sm) auto 0;
+  height: clamp(190px, calc(100dvh - 369px), var(--figure-hero));
+  /* 行高必须显式定为容器高。
+     .figure 是 grid，隐式行高为 auto 时会被图片内容撑到 300px，
+     于是 .figure__img 的 max-height:100% 解析成 300 而不是舞台高度，
+     图片溢出、顶部被裁（实测裁掉 66px，正好切到头顶）。
+     定为 100% 后图片按舞台高度等比缩放，不再溢出。 */
+  grid-template-rows: 100%;
+}
+
+/* 问候语居中：首页是「建立关系」的场景，不是信息列表，
+   居中的问候与形象位共用同一条中轴，视线不用左右找对齐线。 */
+.home__greet {
+  padding-top: var(--sp-md);
+  text-align: center;
+}
+
+:root { --greet-h: 110px; }
+
+/* 欢迎语区固定 108px = 窄屏（320/360）最坏情况下的完整高度：
+     16 上内边距 + 29 h1 + 8 副标题上边距 + 54 副标题两行 = 107 → 108
+   宽屏副标题只占一行，只需 81px，多出的 27px 是留白 —— 换窄屏不裁字。
+   **必须定高，不能用 auto** —— 这块在 .home__stage 这条 flex 列里，
+   高度一变，两端 flex:1 撑杆重新分配，数字人跟着上移。
+   定高正是「数字人不动」的实现方式：容器尺寸恒定，内容按 auto 内部流动。 */
+.home__greet {
+  box-sizing: border-box;   /* 高度含 padding */
+  height: var(--greet-h);
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   提交提问后的两个后置态：加载 → 回复
+   --------------------------------------------------------------------------
+   三者互斥，全由 .js-answering（加载中）/ .js-answered（已有回复）切换：
+     默认          → 欢迎字幕
+     .js-answering → 三点加载气泡
+     .js-answered  → 回复文字
+   高度沿用 --greet-h，所以数字人位置不动。 */
+.answer-typing,
+.answer { display: none; }
+
+.js-answering .greet__hi,
+.js-answering .greet__sub,
+.js-answered .greet__hi,
+.js-answered .greet__sub { display: none; }
+
+/* 加载气泡：复用体系 .bubble--ai（白底 + 卡影）+ .bubble--typing（三点跳动）。
+   只补两条 —— 体系里它是 .bubble 的流内元素（对话页里在气泡列表里），
+   这里要它占据整个字幕区并居中。
+   **四角圆角统一**：.bubble--ai 默认把左下角收成 --r-xs（指向说话方），
+   这里改成与其余三角相同的 --r-bubble，去掉小尾巴的观感。 */
+.js-answering .answer-typing {
+  display: inline-flex;
+  border-radius: var(--r-bubble);
+}
+/* 回复区：与欢迎字幕同一套三行窗口 —— 当前句在首行，每次换句整条轨道
+   从下方滑入，旧句上移滑出上缘。与欢迎区唯一的差别是文字居中（一行一句）。
+
+   **不固定 height，改用 max-height + 内部滚动**：回复句子最长 31 字，
+   首行按 h1 排要折 2 行（57px），三行窗口合计 140px 上下，
+   110px 的字幕区装不下 —— 定高会把后两句硬切掉。
+   改成「放得下就不滚、放不下就在区内滚」，播报时当前句恒贴顶（见 shiftGreetWindow），
+   短句与欢迎字幕观感完全一致。 */
+.js-answered .answer {
+  display: block;
+  text-align: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 100%;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: relative;   /* 退场的旧轨道按它定位，否则会跑到 #greet-box 顶上 */
+}
+.js-answered .answer::-webkit-scrollbar { display: none; }
+.js-answered .answer .greet__line {
+  line-height: 1.45;
+}
+.js-answered .answer .greet__line.is-current {
+  line-height: 1.3;
+}
+/* 回复句比欢迎语长（最长 31 字），首行按 h1 排会折成两三行，
+   110px 装不下「当前 + 后两句」—— 底部用渐变遮罩收边，
+   视觉上是「后面还有」，而不是被硬切一刀。 */
+/* 遮罩的终点色用 --canvas：它正是 body 的底色，且有浅/深两套值
+   （#F5F4FD / #14131F），深浅主题自动跟随，不必再写一条 media 块。
+   起点 alpha 为 0，不必关心色相。 */
+.js-answered #greet-box::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1.1em;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), var(--canvas));
+  pointer-events: none;
+}
+
+/* 播报字幕：三行窗口 + 轨道上移。
+   当前句恒在第一行；每念完一句，整条轨道上移一格，旧句滑出窗口上缘并渐隐，
+   下一句从下方补进来。DOM 里只保留窗口内的三句（见 renderGreetLines），
+   所以行数恒定、高度恒定，不会把下面的内容顶下去。 */
+.greet__track {
+  display: flex;
+  flex-direction: column;
+  /* 上移一格的过渡。--dur-short 与体系同档；缓动用 ease-out，起步快、收尾稳。 */
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.greet__line {
+  display: block;
+  font-size: var(--text-base);
+  line-height: var(--lh-body, 1.7);
+  color: var(--ink-2);
+  transition: color var(--dur-short) var(--ease-out);
+}
+.greet__line + .greet__line { margin-top: var(--sp-xs); }
+.greet__line.is-current {
+  font-size: var(--text-lg);
+  font-weight: var(--w-head);
+  line-height: var(--lh-heading);
+}
+/* 已播过的字：品牌主色；未播的保持次文字色 —— 颜色本身就是进度条。 */
+.greet__said { color: var(--brand); }
+
+/* 换句时正在退场的旧轨道：脱离文档流，盖在窗口原来的位置上（top 由脚本量好后内联给出），
+   整条上移一格并淡出，走完再被摘掉（见 retireTrack）。
+   必须绝对定位 —— 留在流内会把新轨道往下挤，而新轨道要原地滑入。
+   transition 要把 opacity 一起带上（基类只声明了 transform）。
+   父容器要 position: relative，旧轨道才按字幕区左上角定位。 */
+.greet__track--out {
+  position: absolute;
+  left: 0; right: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform var(--dur-short) var(--ease-out),
+              opacity var(--dur-short) var(--ease-out);
+}
+
+/* 收音波形所在处。容器**恒常存在并占位**，只有波形自身的可见性在切 ——
+   绝不能用 display 开关：那会让 .home__stage 的内容高度变化，
+   两端那两个 flex:1 撑杆重新分配剩余空间，数字人与问候语整体上移
+   （踩过：波形只在录音时出现，一点录音键整页往上跳 19px）。
+   用 visibility 保留盒子尺寸，布局纹丝不动。
+   可见性与动画同一个判据（is-live = 正在收音），不再多一个要同步的状态类。 */
+/* 波形在上、状态文字在下，整体水平居中。 */
+.listening {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  padding-top: var(--sp-md);
+}
+/* 波形右侧的状态文字（体系 §8 口径：正文级字号、次文字色，
+   收音中转为品牌色，与波形/按钮同步）。 */
+.listening__text {
+  font-size: var(--text-base);
+  color: var(--ink-3);
+  transition: color var(--dur-short) var(--ease-out);
+}
+.listening__text.is-live { color: var(--brand); }
+/* 录音中：波形上移到刚被隐藏的欢迎字幕所在的位置，垂直居中于字幕区。
+   必须用 relative + top 做纯视觉位移 —— 负 margin 会参与 flex 列的空间计算，
+   把 .home__stage 的有效高度改小、数字人整体下移（踩过：下移了 63px）。
+   relative 位移不改变布局，兄弟节点的位置一律不动。 */
+.is-rec .listening {
+  position: relative;
+  /* 位移把整个波形块（波形 + 下方文字）的中心对到字幕盒的中心。
+     组成：字幕高的一半 + 块上边距 + 30px。
+     30px 是实测校正值：块高 91px，波形居中时块中心比字幕中心低 10px，
+     要补的就是「块高一半 − 波形高一半 + 那 10px」≈ 30。
+     shortcut: 块高随文案折行变化（320 窄屏「正在努力翻译...」可能换行），
+     那时的偏差会变，改文案后需重测这个值。 */
+  top: calc(-1 * (var(--greet-h) / 2 + var(--sp-md) + 30px));
+}
+/* 显隐挂在整个 .listening 上，不挂在波形自己身上 ——
+   文字是波形的兄弟节点，只藏波形的话「我在听，你说」会一直露在首屏。
+   容器保留占位（visibility 不参与布局），数字人仍然不跳。
+   判据类由脚本同时挂在容器与波形上（见 render）。 */
+.listening { visibility: hidden; }
+.listening.is-live { visibility: visible; }
+
+/* 录音中转态（脚本在 render('recording') 里挂到 <html>）：
+   欢迎字幕整块隐藏、波形放大。
+   字幕用 visibility 而不是 display —— 保持 110px 占位，否则整列重排、
+   数字人会跳（同 .listening 的处理口径）。 */
+.is-rec .home__greet { visibility: hidden; }
+/* 波形放大：base.css 的 .wave 是 22px 高、条 3px 宽，首页这个位是画面焦点、
+   显得太小。整体 ×1.8：条宽 5px、高度与各条比例同步放大。
+   各条高度必须逐条覆写 —— base.css 用了 nth-child 定死 8/14/20/12/17/9/13px。 */
+#hero-wave { height: 40px; gap: 5px; }
+#hero-wave i { width: 5px; }
+#hero-wave i:nth-child(1) { height: 14px; }
+#hero-wave i:nth-child(2) { height: 25px; }
+#hero-wave i:nth-child(3) { height: 36px; }
+#hero-wave i:nth-child(4) { height: 22px; }
+#hero-wave i:nth-child(5) { height: 31px; }
+#hero-wave i:nth-child(6) { height: 16px; }
+#hero-wave i:nth-child(7) { height: 23px; }
+
+/* 底部圆形操作区：浮动固定在视口底部，内容从下方穿过。
+   用 fixed 而非 sticky —— sticky 要有个滚动祖先才粘得住，
+   这里内容居中后整页可能不滚，sticky 就浮不起来了。
+   文字色与阴影已由 base.css 的 .iconbtn 提供，不覆写。 */
+.dock--float {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+  display: none;          /* 默认藏起，授权后由 .js-granted 换回来 */
+}
+
+/* ==========================================================================
+   键盘输入条 —— 点「键盘输入」后原位替换那三个圆钮
+   ==========================================================================
+   与 .dock--float 同一套定位（fixed + 底部居中），所以是「原地换掉」
+   而不是另起一行。只有在 .js-input 态显示：
+   脚本切这个类时同时把 .dock 藏掉（见 .js-input .dock）。
+   不用体系里的输入组件（.composer）：那套带模式切换、录音态、两态输入，
+   这里只要输入框 + 发送，套过来反而要剥掉一大半。 */
+.inputbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+  display: none;
+  align-items: center;
+  gap: var(--sp-sm);
+  /* 与 .h5 内容列同宽上限，窄屏留出安全边 */
+  width: min(calc(100% - var(--pad-start) - var(--pad-end)), var(--w-content));
+}
+/* 显隐完全交给 hidden 属性（脚本开/关），沿用 base.css 那条 display:none !important。
+   这里只写布局。三钮让位的规则放到 .js-granted 之后（见文件末尾），
+   否则同特异性下会被后写的 `.js-granted .dock { display: flex }` 盖掉。 */
+.inputbar { display: flex; }
+
+/* 取消钮：固定成与输入框同高（.composer__field 的 --h-input）。
+   .iconbtn 基类是 clamp(46px,15vw,60px)、为首页大圆钮定的，
+   放进输入条会比输入框高一截（375 视口 56 > 48）。这里按输入框压回来。 */
+.inputbar > .iconbtn {
+  width: var(--h-input);
+  height: var(--h-input);
+  min-height: var(--h-input);
+  flex: 0 0 auto;
+}
+
+/* 提示文字调浅。
+   注意 placeholder 并不继承 .composer__field 的 --ink-3 ——
+   base.css 给 input 本身写了 color: var(--ink)，浏览器再据此派生 placeholder，
+   实测落到默认灰 rgb(117,117,117)，与主题色无关。
+   所以这里必须显式指定颜色：用 --ink-3 再压一档透明度，
+   色相与「说明文字」同族，深浅两主题自动跟随。 */
+.composer__field input::placeholder { color: var(--ink-3); opacity: 0.65; }
+
+/* 发送钮的未输入态（无 data-send）：白底落在白色输入框里，边界几乎看不出。
+   base.css 的 --sh-btn 太淡（0.14 / 10px 模糊），撑不起「这里有个按钮」。
+   这里单独加深一档：更实的偏移 + 更大扩散。
+   用 currentColor 系不行（按钮图标色是 --ink-3），所以直接给强一点的紫黑；
+   深色模式下靠 @media 换成纯黑，否则紫影压在暗底上看不见。 */
+/* 图标也给主色：置灰态原本是 --ink-3（灰），在白底白钮上几乎看不见。
+   用 --brand 与就绪态同一族色，只是没有底色 —— 仍是「未就绪」观感，
+   但一眼能认出这是个向上箭头。 */
+.iconbtn.composer__send:not([data-send]) {
+  box-shadow: 0 2px 6px rgba(30, 27, 51, 0.18), 0 1px 2px rgba(30, 27, 51, 0.12);
+  color: var(--brand);
+}
+/* 深色下阴影要更黑更实 —— 半透明深紫压在深底上等于没有 */
+@media (prefers-color-scheme: dark) {
+  .iconbtn.composer__send:not([data-send]) {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ==========================================================================
+   底部动作区：按授权状态二选一
+   ==========================================================================
+   未授权：「立即对话」—— 它的职责就是发起授权。真机微信里点是跳授权页；
+           演示站没有 AppID，所以弹一个确认窗示意（见 .authq）。
+   已授权：录音 · 键盘两个图标钮 —— 语音与身份由微信提供。
+
+   切换看 `.js-granted`（授权后由脚本打上），不看环境：
+   微信端加载时即授权（auth.js 的 boot），所以微信里看不到「立即对话」；
+   非微信端要先点它确认一次。两个规则互为补集，不会同时出现 ——
+   两者都是 fixed + 同一个 bottom，同时显示会叠在一起。
+
+   默认（脚本没跑）露出「立即对话」：它是主入口，藏起来就是一屏死页。 */
+.dock-cta {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--h-control);
+  padding: 0 var(--sp-2xl);
+  border-radius: var(--r-pill);
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  white-space: nowrap;
+  box-shadow: var(--sh-brand);
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+.dock-cta:active { transform: translateX(-50%) translateY(1px); }
+/* 按钮不该有链接的下划线。base.css 给 a:hover 加了 text-decoration: underline，
+   那是给正文里的链接用的；这里是按钮形态，覆写掉。 */
+.dock-cta,
+.dock-cta:hover { text-decoration: none; }
+
+/* ==========================================================================
+   扫码登录弹窗（示意）
+   ==========================================================================
+   真机微信里点「立即对话」是跳微信授权页，回不到本页；演示站没有 AppID，
+   所以这里用同一套 .modal 形态做一个扫码窗，把「扫码 → 登录」这一步演出来。
+   二维码是纯占位图形（CSS 网格画的假码），不指向任何真实链接。
+
+   只限宽、不限高：内容是自然高度，不写死。
+   改宽度必须叠 `dialog.modal` —— base.css 的 `dialog.modal` 特异性 (0,1,1)
+   带 width 与 max-width，单类名会被静默盖掉（本页踩过一次）。
+   最终宽 = min(300, 视口 − 64)：320px 视口下留出左右各 32px。 */
+dialog.modal.authq {
+  width: 300px;
+  max-width: calc(100% - var(--sp-xl) * 2);
+}
+/* 占位二维码：assets/demo-qr.png，演示用占位图，不指向真实链接。
+   点它 = 演示「扫上了」→ 授权成功（见脚本），所以给 pointer 光标。 */
+.authq__qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: var(--sp-lg) auto 0;
+  padding: var(--sp-sm);
+  background: #FFFFFF;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.authq__qr img { width: 100%; height: 100%; display: block; }
+/* button 重置后文字仍按继承对齐：弹窗 .modal 标题默认左对齐，这里居中 */
+.authq h2 { text-align: center; }
+
+/* 授权后把两个图标钮换回来，同时收起「立即对话」。
+   播报中（.js-speaking）两个钮让位给播报钮，播完再换回来。 */
+.js-granted .dock { display: flex; }
+.js-granted .dock-cta { display: none; }
+
+/* AI 标识常显：合规要求（base.css 写明「任何对话页必现」），
+   授权前后都留在页头左侧。 */
+.js-speaking .dock { display: none; }
+
+/* 重播钮：只在「有回复」时出现（播完保留、停止后仍在）—— 还没提问时重播没有意义。
+   播报中不用管：整个 .dock 已被 `.js-speaking .dock` 藏掉（含本钮）。
+   .js-replayable = 播报被中途停掉、回复已收起、等用户点重播。 */
+.js-granted #btn-replay { display: none; }
+.js-answered #btn-replay,
+.js-replayable #btn-replay { display: grid; }   /* 回到 .iconbtn 基类的 grid */
+/* 键盘输入条打开时，三个圆钮让位。
+   必须写在 `.js-granted .dock` 之后：两者特异性相同 (0,2,0)，
+   靠源序取胜 —— 放前面会被覆写成 flex（实测踩过，三钮照样显示）。 */
+.js-input .dock { display: none; }
+
+/* ==========================================================================
+   播报中按钮 —— 播报期间顶替底部那两个钮
+   ==========================================================================
+   动效照录音钮的两层「正在出声」：
+     1) 圆钮本体的扩散波纹 —— 与 #btn-mic 同一套（圆钮直径都由 .iconbtn 的
+        clamp 给出，不用另设）。**幅度与周期这一处收窄加快了**：
+        录音钮的波纹按「长按收音」的时长去调，播报是一句话就完，
+        用同一条曲线会显得拖沓。关键帧见下面本页重定义的 speakwave。
+     2) 钮内图形用**收音状态行左边那串波形**（.wave，base.css 已有），
+        连同 is-live 一起复用：那正是「我在听，你说」左边的动效，量纲与节奏同一套。
+   不自己画像素、不新写关键帧 —— 两处动效都从既有实现借用。 */
+/* 容器只用 .dock--speak 一个类，**不叠 .dock**。
+   叠了就会被 `.js-granted .dock { display: flex }`（0,2,0）盖掉本条的
+   display:none（0,1,0）—— 实测过：播报结束后容器仍 display:flex，
+   与换回来的图标钮重叠在同一位置。这里不复用 .dock 类即无此冲突。
+   单子元素，flex 不需要额外属性。 */
+.dock--speak {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--pad-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-nav);
+  display: none;
+}
+.js-speaking .dock--speak { display: flex; }
+
+#btn-speaking {
+  position: relative;
+  /* 实心品牌底 + 反白图形：屏幕正中被用户盯着看，与录音中的 #btn-mic 同一观感。 */
+  background: var(--grad-brand);
+  color: var(--on-brand);
+  box-shadow: var(--sh-brand);
+}
+/* 钮内波形压白：.wave 默认用 --grad-wave（紫色渐变），
+   在品牌渐变底上会糊成一团，反白才看得见。宽度交给 .wave 自身的间距。 */
+#btn-speaking .wave { color: var(--on-brand); }
+#btn-speaking .wave i { background: currentColor; }
+#btn-speaking::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--brand);
+  /* 比录音钮那套收窄、加快：base.css 的 speakwave 扩到 1.55 倍、走 1600ms，
+     在 59px 的圆钮上会甩出约 91px 的一圈，节奏也偏慢。
+     这里覆写成 1.22 倍 / 900ms，扩散只溢出一点点、「心跳」快一档。
+     关键帧的 scale 值写在 base.css 里，改不了单个用法的幅度 ——
+     所以只能重定义一条同名关键帧（同为全局，页面 <style> 在 base.css 之后，
+     后定义者胜，只影响本页；录音钮用的是 base.css 那条的原值）。 */
+  animation: speakwave 900ms var(--ease-out) infinite;
+  pointer-events: none;
+}
+@keyframes speakwave {
+  0%   { opacity: .55; transform: scale(1); }
+  70%  { opacity: 0;   transform: scale(1.22); }
+  100% { opacity: 0;   transform: scale(1.22); }
+}
+
+/* 录音中：录音键上色，与收音行的波形呼吸同步。
+   用 base.css 既有的 .iconbtn--brand 变体（品牌渐变底 + 反白图标 + 品牌投影），
+   不新增视觉语言。颜色不是唯一信号 —— 波形动起来、文案切成「我在听，你说」、
+   按钮 aria-pressed 转 true，三条通道同时说明状态（§10）。
+
+   这里只保留 transform 过渡（按下反馈），去掉 background-color 过渡：
+   .iconbtn 的录音态背景是渐变（background-image），而它的背景色是 transparent。
+   background-image 不参与过渡，背景色却在过渡 —— 途中渐变被近乎透明的背景色
+   挡住，图标却已经转白，会出现约 100ms 的「图标消失」帧。
+   状态切换一步到位更干净，也不会引起重排（§8）。 */
+#btn-mic {
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+/* 录音中：与回复播报钮同一套扩散波 —— 同一个 speakwave 关键帧，
+   视觉语言不分叉（都是「这个元素正在出声」）。
+   挂在 .iconbtn--brand 上而不是自己加状态类：录音时 render() 已经会给
+   这个类（品牌渐变底），复用现成的判据，不再多一个要同步的状态。
+   波纹只在真正收音时出现；识别中（.is-busy）不加，那时是转圈在表达进度。 */
+#btn-mic.iconbtn--brand:not(.is-busy)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--brand);
+  animation: speakwave 1600ms var(--ease-out) infinite;
+  pointer-events: none;
+}
+/* .iconbtn 没写 position，绝对定位的 ::after 会以页面为参照 —— 补上 */
+#btn-mic { position: relative; }
+
+/* 录音键三态图标互斥：麦克风 / 转圈 */
+#btn-mic .iconbtn__spin { display: none; }
+#btn-mic.is-busy .iconbtn__mic { display: none; }
+#btn-mic.is-busy .iconbtn__spin { display: block; }
+
+/* 识别中：转圈。只动 transform（§8），布尔量旋转最省事也最稳 */
+#btn-mic.is-busy .iconbtn__spin {
+  animation: micspin 800ms linear infinite;
+}
+@keyframes micspin { to { transform: rotate(360deg); } }
+
+/* 识别中禁用按压位移，否则转圈会跟着跳 */
+#btn-mic.is-busy:active { transform: none; }
+
+/* 降级动效时转圈显式停住。
+   不靠 base.css 的全局钳制（它把时长压到 150ms、只跑一次，
+   结果同样是静止，但那条规则读起来像"忘了处理"）。
+   口径与本文件的 .wave：停成静态可辨的图形，
+   "正在进行"这件事由旁边那句「正在识别你说的话」承担，不靠图形空转（§8）。 */
+@media (prefers-reduced-motion: reduce) {
+  #btn-mic.is-busy .iconbtn__spin { animation: none; }
+  /* 波纹停住，留一圈静态描边 —— 状态不丢（底色已是品牌渐变），
+     但不空转。与 base.css 里 .speakbtn 的处理同一口径。 */
+  #btn-mic.iconbtn--brand:not(.is-busy)::after {
+    animation: none;
+    opacity: .45;
+    transform: none;
+  }
+  /* 播报钮同口径：扩散波纹与钮内波形都停住。
+     波形停住仍是可辨的图形（base.css 给了 transform: scaleY(.5) 的静态态），
+     不空转但状态不丢。 */
+  #btn-speaking::after { animation: none; opacity: .45; transform: none; }
+  #btn-speaking .wave.is-live i { animation: none; }
+}
+/* 内容底部让位 = 按钮直径 + 按钮下边距(--sp-lg) + 安全区 + 8px 余量。
+   与 .dock--float 的 bottom 口径一致，最后一行正好落在按钮上方。 */
+.home__main--hasdock {
+  padding-bottom: calc(var(--h-dock) + var(--sp-lg) + var(--pad-bottom) + var(--sp-xs));
+}
+
+/* --------------------------------------------------------------------------
+   矮横屏：把这一屏压进视口，不再纵向滚动
+   --------------------------------------------------------------------------
+   上面那句 `calc(100dvh - 334px)` 的 334 是按**竖屏**内容标定的。横屏一矮
+   （320~430px 是常态），100dvh - 624 直接变负数，被 clamp 顶到 190px 下限，
+   而 190px 对这么矮的视口仍然太大 —— 页面就开始纵向滚动。
+
+   两处一起改，缺一不可：
+
+   1) 底部让位收掉。那 104px 是给**底部**按钮区留的，而横屏下（见文件末尾的
+      查询）按钮已经挪到左侧、不再占据底部，这 104px 纯是浪费。
+      **只限横屏**：竖屏下按钮仍在底部，这层让位必须留着。
+   2) 形象位允许压到 110px。190px 是为竖屏矮机定的下限，对横屏太松。
+
+   248 这个常数 = 形象位之外的**全部**纵向开销，实测：
+     16 上内边距 + 36 顶行 + 12 形象上边距 + 81 问候语区（横屏不折行）
+     + 91 收音行 + 12 下内边距（安全区）= 248
+   **收音行是 91 不是 56**（波形 40 + 间距 8 + 文字 27 + 上内边距 16）。
+   早先按 56 记，矮横屏三档各多溢出 35px。
+   （AI 标识已并入顶行，不再单独占纵向空间。）
+   于是 110px 下限对应的最小视口 = 358px；更矮时才会整页滚动。 */
+@media (orientation: landscape) and (max-height: 519.98px) {
+  .home__main--hasdock {
+    padding-bottom: var(--pad-bottom);   /* 底部已无按钮，只留安全区 */
+  }
+  /* 横屏视口宽，副标题不会折行，全高只需 81px（竖屏按窄屏最坏的 110 留会白撑 29）。 */
+  .home__greet { height: 81px; }
+  :root { --greet-h: 81px; }   /* 录音时波形上移的距离要跟着变 */
+  .figure--hero {
+    height: clamp(110px, calc(100dvh - 248px), var(--figure-hero));
+  }
+}
+/* 极矮横屏（≤339px，实测最极端是 568×320）：上面那档按 110px 形象下限算，
+   最少要 358px 视口；再矮就会滚。这一档把下限放到 72px ——
+   72 = 320 − 248，刚好卡在 568×320 一屏不滚（75px 时还差 3px）。
+   形象仍是可辨认的半身像，换来严格一屏不滚。 */
+@media (orientation: landscape) and (max-height: 339.98px) {
+  .figure--hero {
+    height: clamp(72px, calc(100dvh - 248px), var(--figure-hero));
+  }
+  /* 「立即对话」在极矮横屏下会横跨到页面中部、压在问候语上（实测 568×320
+     与字幕叠了 44px）。收窄并贴到左缘 —— 与三个圆钮同一列，横屏左侧通栏
+     本来就是动作区。已授权态它不显示，只有未授权才会看到。 */
+  .dock-cta {
+    left: var(--pad-start);
+    transform: none;
+    padding: 0 var(--sp-lg);
+    min-width: 0;
+    font-size: var(--text-xs);
+  }
+  .dock-cta:active { transform: translateY(1px); }
+}
+
+/* ---- 形象选择弹层（原生 dialog，见 DESIGN.md D8） ---- */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-xs);
+  margin-top: var(--sp-md);
+}
+.picker__opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-sm);
+  background: var(--mist-1);
+  border-radius: var(--r-md);
+  text-align: left;
+  /* 选中态只改 outline-color，不改 border-width（会抖，§5） */
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color var(--dur-micro) var(--ease-out);
+}
+.picker__opt[aria-pressed="true"] { outline-color: var(--brand); }
+
+.picker__thumb {
+  flex: 0 0 auto;
+  width: 56px;   /* 固定几何控件：头像缩略图（§9.1） */
+  height: 56px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  /* 白底占位素材直接落在白底上，无需 multiply，深浅色下都不用换混合模式 */
+  background: var(--surface);
+}
+.picker__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 12%;
+}
+.picker__body { flex: 1 1 auto; min-width: 0; }
+.picker__name { display: block; font-size: var(--text-base); font-weight: var(--w-mid); }
+.picker__desc { display: block; margin-top: var(--sp-3xs); font-size: var(--text-xs); color: var(--ink-3); }
+/* 选中不只靠颜色：另给一个勾选图标（§10 状态双通道） */
+.picker__check { flex: 0 0 auto; width: 20px; height: 20px; color: var(--brand); opacity: 0; }
+.picker__opt[aria-pressed="true"] .picker__check { opacity: 1; }
+
+/* ---- 录音识别结果弹窗 ---- */
+
+/* 编辑框：多行、可改。录音转写结果常有错字，让用户改完再发。
+   base.css 的 .field__input 是单行样式，这里给 textarea 补最小高度与行高。 */
+.speechbox {
+  min-height: 108px;
+  line-height: var(--lh-body);
+  resize: none;              /* 移动端不需要手动拉高，交给 rows 与自适应 */
+  overflow-y: auto;
+}
+
+/* 说明句与编辑框之间的间距。
+   base.css 的 dialog.sheet p 只给了 --sp-xs（8px）下边距，说明句会贴住输入框。
+   按正文行距的呼吸感取 --sp-md（16px），不覆写 base.css 的 p 规则，只作用于本处。 */
+.speechsheet-intro { margin-bottom: var(--sp-md); }
+
+/* 录音期间的禁用外观。
+   口径沿用 base.css 的 .iconbtn[disabled]（opacity .45）。
+   选择器不绑 .iconbtn —— 被拦的两个按钮一个是 .iconbtn（键盘）、
+   一个是 .pill（切换形象），绑了就漏掉后者。
+   看着还能按却按不动，比看着就不能按更糟，所以压暗是必需的，
+   但 pointer-events 要保留 auto，否则收不到点击、给不出原因提示。 */
+.is-blocked {
+  opacity: .45;
+  cursor: not-allowed;
+}
+.is-blocked:active { transform: none; }
+
+/* ==========================================================================
+   矮横屏：三个动作区改到屏幕左侧、垂直居中
+   ==========================================================================
+   只在**矮横屏**（横屏 + 高度 < 520px）生效 —— 手机横过来是典型场景：
+   纵向只剩三百多像素，内容放不下、页面开始滚动，而按钮是 fixed 钉在视口底部，
+   会压在问候语那几行字上（844×390 实测）。挪到左侧通栏空处，既避开文字，
+   也顺带利用了横屏多出来的横向空间。
+
+   **为什么卡高度而不是宽度**：问题的根因是纵向空间不够，跟屏幕多宽无关。
+   按宽度卡会漏掉「宽屏但很矮」的横屏（如 1280×400），按高度卡正对病根。
+   阈值 520 取自实测两头：手机横屏 375~414 要改，平板横屏 768、桌面横屏 800
+   不必改（那里纵向本来就够，且内容居中 640px 宽时按钮孤悬最左会离得很远）。
+
+   其余情况**一概不受影响**：竖屏、平板竖屏、高横屏都走原来的底部居中。
+
+   **必须放在样式块最末**：`.dock-cta` / `.dock--speak` 的基类规则定义在本块
+   之前，同特异性下后写者胜 —— 放前面会被基类静默盖掉（踩过一次：
+   三个容器只有 .dock--float 生效，另两个纹丝不动）。 */
+@media (orientation: landscape) and (max-height: 519.98px) {
+  .dock--float,
+  .dock-cta,
+  .dock--speak {
+    left: var(--pad-start);          /* 与上方「切换形象」胶囊的左缘对齐 */
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);     /* left 已到位，transform 只做垂直校正 */
+  }
+  /* 两个图标钮改竖排：录音在上、键盘在下。
+     横屏左侧是一长条窄通栏，左右并排会占掉一大截横向空间；
+     竖排正好嵌进去，也和「上面录音、下面键盘」的阅读顺序一致。
+     方向反过来即可 —— DOM 顺序本来就是 mic 在前、keyboard 在后，
+     不必改结构。居中沿用 .dock 基类的 align-items: center。 */
+  .dock--float { flex-direction: column; }
+
+  /* 按下反馈得单写一条：`.dock-cta:active`（0,2,0）比上面单类名的 (0,1,0) 高，
+     不写的话横屏下按下会把 translateX(-50%) 加回来、横向跳半个身位。
+     这条偏振垂直那 1px。 */
+  .dock-cta:active { transform: translateY(calc(-50% + 1px)); }
+
+  /* 输入条跟着压到最低。基类的 bottom 还留着桌面那份 --sp-lg(24px) 的呼吸量，
+     竖屏有富余、矮横屏没有 —— 实测 844×390 / 667×375 / 568×320 三档都会
+     压住字幕最后一行 16px。收到 --pad-bottom（12px）后三档各让出 8px 空隙。
+     位置仍居中：这里只改纵向，left/transform 沿用基类。 */
+  .inputbar { bottom: var(--pad-bottom); }
+}
+
+/* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写。
+   原先这里有一份「贴底改贴顶」的页面级覆写，那是因为组件默认贴底；
+   现在组件统一走顶部，各页就不必各自纠正一遍。 */
+</style>
+</head>
+<body>
+
+<div class="h5 home">
+  <main class="h5__main home__main home__main--hasdock">
+
+    <div class="toprow">
+      <!-- AI 标识：合规要求（base.css 写明「任何对话页必现」）。
+           与「切换形象」同行、贴最左；**授权前后都常显**，不做隐藏 ——
+           base.css 那条「必现」是有意为之，藏起来就不合规了。 -->
+      <p class="aiflag">内容由 AI 生成，请注意甄别</p>
+      <!-- 窄屏纯图标圆钮，≥375 显示文字（见 .pill--icon / .pill__label）。
+           aria-label 常留着：窄屏下它是唯一可读名。 -->
+      <button class="pill pill--icon" type="button" id="change-avatar" aria-label="切换形象">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true">
+          <path d="M4 8h11M4 16h7"/><path d="M17 5l3 3-3 3M13 13l3 3-3 3"/>
+        </svg>
+        <span class="pill__label" aria-hidden="true">切换形象</span>
+      </button>
+    </div>
+
+    <div class="home__stage">
+
+      <figure class="figure figure--hero">
+        <!-- 属性尺寸要与素材真实比例一致（1024×1024，1:1）。
+             写成 300×400（3:4）会在解码前按错误比例占位、加载完再跳一下。
+             另注意 img 有 max-height:100%，舞台比 300px 矮时会从顶部裁掉
+             超出部分，所以这张图必须能与舞台共存，别再把舞台压得比图还矮。 -->
+        <!-- 这里的初始 src 必须与 AVATARS[0] 一致：脚本要等人像解码后才替换，
+             不一致的话首帧会闪一下另一张形象。 -->
+        <img class="figure__img" id="hero-img"
+             src="./h5v2/assets/avatars/avatar-01.png"
+             alt="数字人形象：3D 女性，白色衬衫，无动作"
+             width="300" height="300" loading="eager" decoding="async">
+      </figure>
+
+      <!-- 播报字幕：句子由脚本按标点拆好后塞进来（见 splitGreeting）。
+           第 0 句始终是「当前播报句」，用 h1 字号 + 主文字色；后面未播的句子
+           用次文字色。整句念完才换下一句，过程中不滚动。
+           这份静态文案只作为「脚本没跑时」的兜底，同时是 TTS 的文本来源。 -->
+      <div class="greet home__greet" id="greet-box">
+        <h1 class="greet__hi" id="greet-hi">你好，今天想聊点什么？</h1>
+        <p class="greet__sub" id="greet-sub">智库报告 / 学术论文 / 政策解读，都可以问我！</p>
+
+        <!-- 提交提问后的两个后置态（都用 .is-answering 切，见脚本）：
+             1) 加载：体系现成的三点跳动气泡，左下角圆角（.bubble--ai）
+             2) 回复：纯文字，三行窗口 + 底部渐变遮罩，播报进度同欢迎字幕 -->
+        <div class="answer-typing bubble bubble--ai bubble--typing" id="answer-typing"
+             role="status" aria-label="正在生成回答">
+          <i></i><i></i><i></i>
+        </div>
+        <div class="answer" id="answer" role="status"></div>
+      </div>
+
+
+      <!-- 波形所在处。容器恒常占位、不动布局，只切换波形自身的可见性 ——
+           录音时出现、结束收走，但数字人与问候语不会因此上跳
+           （见 .listening 的样式注释）。
+           原来的「点按开始说话」与 AI 标识两行已按需求移除。 -->
+      <div class="listening" role="status" aria-live="polite">
+        <span class="wave" id="hero-wave" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+        <span class="listening__text" id="listen-text">我在听，你说</span>
+      </div>
+
+    </div>
+
+    <!-- 播报中按钮：整个容器只在播报期间显示，顶替底部那两个钮
+         （见 .dock--speak 的样式注释）。
+         钮内是上面那串波形的副本，需 is-live 才动 ——
+         由脚本在播报开始时增删，不早动也不空转。 -->
+    <!-- 容器只用 .dock--speak，不叠 .dock —— 见该类的样式注释（叠了会被
+         `.js-granted .dock` 的特异性盖住，导致播报结束后按钮不消失）。 -->
+    <div class="dock--speak">
+      <button class="iconbtn" type="button" id="btn-speaking" aria-label="正在播报">
+        <span class="wave" id="speak-wave" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+      </button>
+    </div>
+
+  </main>
+</div>
+
+<div class="dock dock--float">
+  <!-- aria-pressed=false 是默认态：尚未录音。
+       三态：默认（白底紫图标）→ 录音中（品牌渐变 + .iconbtn--brand）
+             → 识别中（.is-busy，麦克风换成转圈）。 -->
+  <button class="iconbtn" type="button" id="btn-mic"
+          aria-label="录音提问" aria-pressed="false">
+    <svg class="iconbtn__mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+    </svg>
+    <svg class="iconbtn__spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+         stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke-opacity=".3"/>
+      <path d="M21 12a9 9 0 0 0-9-9"/>
+    </svg>
+  </button>
+  <!-- 录音期间本钮不可达：压暗并移出 Tab 序，点击改为提示。 -->
+  <!-- 用 button 而不是 <a>：对话页接回来前它没有可跳的目标，
+       空 href 既不语义也不是 Tab 可达的（实测 focus() 落不上去）。
+       button 自带键盘可达与 Enter/Space 激活，与两侧的 mic / replay 一致。 -->
+  <button class="iconbtn" type="button" id="btn-keyboard" aria-label="键盘输入">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+      <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>
+    </svg>
+  </button>
+  <!-- 重新播放：重念当前这条回复（只在有回复后出现，见 .js-answered 的显隐规则）。
+       外观沿用 .iconbtn，与其他两个钮同规格。 -->
+  <button class="iconbtn" type="button" id="btn-replay" aria-label="重播本次回答">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 11a9 9 0 1 1 2.6 6.4"/>
+      <path d="M3 5v6h6"/>
+    </svg>
+  </button>
+</div>
+
+<!-- 键盘输入条：点「键盘输入」钮后原位替换上面那三个圆钮。
+     不用体系里的输入组件（那套带模式切换与录音态），只要输入框 + 发送。
+     左侧 X 是取消，回到三钮。 -->
+<div class="inputbar" id="inputbar" hidden>
+  <button class="iconbtn" type="button" id="btn-cancel-input" aria-label="取消输入">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+         stroke-linecap="round" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18"/>
+    </svg>
+  </button>
+  <div class="composer__field">
+    <input id="input-field" type="text" placeholder="输入一个简短的提问吧！" autocomplete="off">
+    <button class="iconbtn composer__send" type="button" id="btn-send-input"
+            aria-label="发送" disabled>
+      <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- 微信授权触发钮。录音 / 键盘那两个图标钮要依赖微信授权，未授权时不出现。
+     微信端在加载时就被 auth.js 的 boot() 授权了，所以这个钮在微信里看不到；
+     非微信端它常驻，点它走授权确认。
+     成对动作区的关系与「为什么默认显示它」见上方 .dock-cta 的样式注释。 -->
+<button class="dock-cta" type="button" id="btn-start">立即对话</button>
+
+<!-- 扫码登录弹窗（演示示意）。真机是跳微信授权页，没有这个窗。
+     二维码用 assets/demo-qr.png 占位，不指向任何真实链接。
+     点码 = 演示「扫上了」→ 授权成功；Esc 关掉按「未授权」处理（见脚本）。 -->
+<dialog class="modal authq" id="auth-sheet" aria-labelledby="auth-sheet-title">
+  <h2 id="auth-sheet-title">微信扫码登录</h2>
+  <button class="authq__qr" type="button" aria-label="演示：已扫码，点击登录">
+    <img src="./assets/demo-qr.png" alt="" width="320" height="320" loading="lazy" decoding="async">
+  </button>
+</dialog>
+
+<dialog class="sheet" id="avatar-sheet" aria-labelledby="avatar-sheet-title">
+  <h2 id="avatar-sheet-title">选择数字人形象</h2>
+
+  <div class="picker" id="avatar-list"></div>
+
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="avatar-cancel">取消</button>
+  </div>
+</dialog>
+
+<!-- 录音转写弹窗。识别结果常带错字，先给用户一个可改的框再发。
+     用原生 dialog：Esc 自带关闭，焦点自动锁在弹层内。 -->
+<dialog class="sheet" id="speech-sheet" aria-labelledby="speech-title">
+  <h2 id="speech-title">确认提问内容</h2>
+  <p class="speechsheet-intro">以下是语音识别结果，可以直接修改。</p>
+
+  <label class="field" for="speech-text">
+    <span class="sr-only">语音识别结果</span>
+    <textarea class="field__input speechbox" id="speech-text" rows="3"
+              spellcheck="false"></textarea>
+  </label>
+
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="speech-cancel">取消</button>
+    <button class="btn btn--primary" type="button" id="speech-send">发送</button>
+  </div>
+</dialog>
+
+<!-- 反馈条：只在「结果不可见」时用（§7）。录音期间点了禁用钮属于此类。 -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="./auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* 占位素材两张，正式形象待授权后替换（DESIGN.md §6）。
+     下标 0 即默认形象 —— 这里放女性。顺序同时是 localStorage 的取值口径。 */
+  var AVATARS = [
+    {
+      src: './h5v2/assets/avatars/avatar-01.png',
+      name: '形象一',
+      desc: '白色衬衫 · 女性',
+      alt: '数字人形象：3D 女性，白色衬衫，无动作'
+    },
+    {
+      src: './h5v2/assets/avatars/avatar-02.png',
+      name: '形象二',
+      desc: '浅蓝衬衫 · 男性',
+      alt: '数字人形象：3D 男性，浅蓝衬衫，双手抱臂'
+    }
+  ];
+
+  var current = 0;
+  var heroImg = document.getElementById('hero-img');
+  var sheet = document.getElementById('avatar-sheet');
+  var list = document.getElementById('avatar-list');
+
+  var CHECK_SVG =
+    '<svg class="picker__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M20 6L9 17l-5-5"/></svg>';
+
+  function renderOptions() {
+    list.innerHTML = AVATARS.map(function (a, i) {
+      return '<button class="picker__opt" type="button" data-index="' + i + '" ' +
+             'aria-pressed="' + (i === current) + '">' +
+               '<span class="picker__thumb">' +
+                 '<img src="' + a.src + '" alt="" width="56" height="56">' +
+               '</span>' +
+               '<span class="picker__body">' +
+                 '<span class="picker__name">' + a.name + '</span>' +
+                 '<span class="picker__desc">' + a.desc + '</span>' +
+               '</span>' +
+               CHECK_SVG +
+             '</button>';
+    }).join('');
+  }
+
+  /* 形象选择存 localStorage，刷新后仍是上次选的那张。
+     老内核可能禁 localStorage，读写都包一层 try，失败就退回默认形象。 */
+  var AVATAR_KEY = 'skl.avatar';
+
+  function rememberAvatar(i) {
+    try { localStorage.setItem(AVATAR_KEY, String(i)); } catch (err) { /* 无痕模式等，忽略 */ }
+  }
+
+  function recallAvatar() {
+    try {
+      var v = parseInt(localStorage.getItem(AVATAR_KEY), 10);
+      return (v >= 0 && v < AVATARS.length) ? v : 0;
+    } catch (err) { return 0; }
+  }
+
+  function applyAvatar(i) {
+    current = i;
+    var a = AVATARS[i];
+    heroImg.src = a.src;
+    heroImg.alt = a.alt;
+    renderOptions();
+    rememberAvatar(i);
+  }
+
+  /* 形象选择。老内核（X5）无 showModal 时退化为直接轮换，
+     不让首页的主入口变成死按钮。 */
+  document.getElementById('change-avatar').addEventListener('click', function () {
+    if (typeof sheet.showModal === 'function') {
+      renderOptions();
+      sheet.showModal();
+    } else {
+      applyAvatar((current + 1) % AVATARS.length);
+    }
+  });
+
+  list.addEventListener('click', function (e) {
+    var opt = e.target.closest('.picker__opt');
+    if (!opt) return;
+    applyAvatar(Number(opt.dataset.index));
+    sheet.close();
+  });
+
+  document.getElementById('avatar-cancel').addEventListener('click', function () {
+    sheet.close();
+  });
+
+  /* ======================================================================
+     收音 → 识别 → 转写确认
+     状态机：idle → recording → recognizing → idle（弹窗期间也属 idle，
+     麦克风回到默认免得与弹窗两处同时"活跃"）
+     这是演示件：识别结果与耗时都是写死的，不做真实录音。
+     ====================================================================== */
+
+  var mic = document.getElementById('btn-mic');
+  /* 波形。显隐与动画都由 is-live 一个类控制（见 .listening 的样式注释），
+     容器不参与开关，所以这里不需要它的引用。 */
+  var wave = document.getElementById('hero-wave');
+  var listenText = document.getElementById('listen-text');
+  var listenRow = document.querySelector('.listening');
+
+  var RECOGNIZE_MS = 2000;   /* 演示：识别耗时 2s，见需求 */
+
+  /* 播报按钮的最长停留时间（兜底，正常播报远短于此）。
+     问候语约 20 字，中文 TTS 通常 4~6s 念完；微信端被拦时 onend 也不来，
+     取一个明显长于正常时长的上限，避免按钮永久停住。 */
+  var SPEAK_MAX_MS = 15000;
+
+  /* 演示用识别结果 —— 与首页示例对话同一主题，跳转对话页后能接上 */
+  var DEMO_SPEECH = '长江经济带的区域协调发展，有哪些代表性研究成果？';
+
+  var speechSheet = document.getElementById('speech-sheet');
+  var speechText = document.getElementById('speech-text');
+  var toastEl = document.getElementById('toast');
+  var keyboardBtn = document.getElementById('btn-keyboard');
+  var changeAvatarBtn = document.getElementById('change-avatar');
+  var replayBtn = document.getElementById('btn-replay');
+
+  var state = 'idle';
+  var recognizeTimer = null;
+  var toastTimer = null;
+
+  function isRecording() { return state === 'recording'; }
+
+  /* 录音期间要做两件事：视觉上压暗到不可用，交互上拦住并给出原因。
+     只压暗不拦、或只拦不压暗，都会让用户以为是页面坏了。 */
+  function setBlocked() {
+    var blocked = isRecording();
+    /* 形象钮不在这条路径上：它的禁用范围包含播报态，由 syncAvatarLock 统一管，
+       两处都写会互相覆盖（录音结束会误把播报中的禁用态解掉）。 */
+    [keyboardBtn, replayBtn].forEach(function (el) {
+      el.classList.toggle('is-blocked', blocked);
+      el.setAttribute('aria-disabled', String(blocked));
+      if (blocked) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
+    syncAvatarLock();
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2000);
+  }
+
+  /* ---- 授权状态：底部动作区二选一（见 .dock-cta 的样式注释）----
+     微信端在加载时就授权；非微信端点「立即对话」走确认窗。 */
+  var isWx = Auth.isWeChat();
+  /* 微信端：加载时即授权，底部直接出图标钮（见 .js-granted 的样式注释）。
+     非微信：等用户点「立即对话」走确认窗。 */
+  if (isWx) document.documentElement.classList.add('is-wx');
+
+  function grant() {
+    Auth.boot();               /* 已授权则 no-op */
+    document.documentElement.classList.add('js-granted');
+    /* 播报挪到下一帧：此刻 showModal 的弹层还开着，若同步 startSpeak()，
+       两个 .dock 在同一个渲染帧里一显一隐，会闪一下。
+       等一帧让弹层先关、布局落定，再交换（closeAuthSheet 在 grant() 之后才调）。
+       微信路径加载时无手势，走 speakGreetingWx（含首次点击补播）。 */
+    setTimeout(isWx ? speakGreetingWx : speakGreeting, 0);
+  }
+
+  /* 授权成功后自动播报问候语。
+     走浏览器内置的 speechSynthesis —— 演示站无后端，这是唯一不引依赖的出声路。
+     文案**从 DOM 读**，不另存一份常量：同一句话写两处，改文案就会漏一处。
+
+     浏览器自动播放策略要求有用户手势，两条路径的手势来源不同：
+       非微信：点「确认授权」→ 有手势 → 出声。
+       微信：授权在页面加载时完成，没有手势 → 加载时那次 speak 被静默拦掉。
+             所以挂了**首次点击补播**（见下方 speakListener）：用户在页面里
+             点任意位置的那一刻有了手势，立刻把同一句补上 —— 对用户呈现的
+             仍是「进来就播」，只是声音从第一次点击才开始。
+     设计体系里 §9.10 与 §11 都禁止自动播报（要求手势触发）；
+     本次按用户决定作演示特例处理，**代码不回归规范、体系文档也不改**。 */
+  /* 问候语拆句：只在**句末标点**（？！。；）断开，逗号与顿号不断 ——
+     这样「你好，今天想聊点什么？」整句是一行、
+     「智库报告 / 学术论文 / 政策解读，都可以问我！」整句是一行，
+     与原来的两行排版逐字一致。 */
+  var SENTENCE_RE = /[^。；;！？!?]+[。；;！？!?]?/g;
+
+  function splitGreeting(text) {
+    return (text.match(SENTENCE_RE) || []).map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+
+  /* 回复拆行：句末标点与逗号都断行，且**断行处的标点不显示** ——
+     一行一句，读起来像字幕。顿号不断（并列词要留在同一行），
+     所以「上海、南京、杭州等地…」仍是一行、顿号照常显示。
+     用正向匹配而非「拆完再删标点」：分隔符直接不进入结果，不必二次清理。 */
+  var ANSWER_LINE_RE = /[^。；;！？!?，,]+/g;
+
+  function splitAnswer(text) {
+    return (text.match(ANSWER_LINE_RE) || []).map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+
+  function speakGreeting() {
+    /* 播报按钮先亮起来：真机微信没有手势、出声会被拦，
+       若等 speak() 成功才显示，那条路上按钮永远不出现，演示就少了这一段。
+       先亮、播完再收（收尾见 endSpeak）。 */
+    startSpeak();
+    if (!('speechSynthesis' in window)) { endSpeak(); return; }
+    var hi = document.getElementById('greet-hi');
+    var sub = document.getElementById('greet-sub');
+    /* 缓存原文：renderGreetLines 会把这两行替换成逐句 span，
+       播完要还原就得留着原本的文本（重播时也还读得到）。 */
+    if (hi && sub) greetSource = { hi: hi.textContent, sub: sub.textContent };
+    var text = greetSource ? greetSource.hi + greetSource.sub : '';
+    var lines = splitGreeting(text);
+    if (!lines.length) { endSpeak(); return; }
+
+    speakText(lines, document.getElementById('greet-box'));
+  }
+
+  /* 通用播报入口：把句子铺进指定容器并从头念起。
+     欢迎语与回复走同一条路 —— 三行窗口、逐句上移、已播变紫，全部一致。
+     调用前须已 startSpeak()（外层负责），这里只管内容。 */
+  function speakText(lines, root) {
+    if (!lines || !lines.length) { endSpeak(); return; }
+    speakRoot = root;
+    renderGreetLines(lines, root);
+    speakLine(lines, 0);
+  }
+
+  /* 原始两行文案。首次播报时从 DOM 抓一次存这里，之后一直用它 ——
+     播完 DOM 会被还原，但不必再从 DOM 读。 */
+  var greetSource = null;
+
+  /* 把句子铺进欢迎语区：第一句 = 当前播报句（h1 字号 + 主色），
+     其余未播句用次要色。用 createElement 而非拼字符串，文案里的斜杠
+     与标点不需要转义，也不引入 innerHTML 注入面。 */
+  /* 只渲染「当前句 + 后两句」这三行，装在一条轨道里。
+     窗口外的句子不建 DOM —— 行数恒定，字幕区高度不变，数字人不动。
+     欢迎字幕与回复共用这一套：每换一句整条轨道从下方滑入，
+     旧句随之上移、滑出窗口上缘并渐隐。 */
+  var WINDOW_LINES = 3;
+
+  /* 当前播报容器：欢迎区（#greet-box）或回复区（#answer）。
+     paintLine / shiftGreetWindow / renderGreetLines 都按它找行，
+     否则两处都有 .greet__line，全局查询会串台。 */
+  var speakRoot = null;
+
+  function renderGreetLines(lines, root) {
+    var box = root || document.getElementById('greet-box');
+    /* 同 renderStaticGreet：只清上一次的行，不整体清空 ——
+       #greet-box 里还常驻着加载气泡与回复区。 */
+    var junk = box.querySelectorAll('.greet__track, .greet__line, .greet__hi, .greet__sub');
+    for (var k = 0; k < junk.length; k++) junk[k].parentNode.removeChild(junk[k]);
+    var track = document.createElement('div');
+    track.className = 'greet__track';
+    for (var i = 0; i < WINDOW_LINES && i < lines.length; i++) {
+      track.appendChild(makeLine(lines[i], i === 0));
+    }
+    /* 插到最前：greet-box 里靠后还有加载气泡与回复区，插末尾会让播报行排到它们后面 */
+    box.insertBefore(track, box.firstChild);
+  }
+
+  function makeLine(text, isCurrent) {
+    var el = document.createElement('span');
+    el.className = 'greet__line' + (isCurrent ? ' is-current' : '');
+    el.textContent = text;
+    return el;
+  }
+
+  /* 把某句按「已播 n 个字」重新切段上色。
+     用两个 span 而不是 CSS 渐变：文字会折行，渐变按盒子铺、不跟着字形走，
+     折行处会露出错误进度。切段则永远精确。 */
+  function paintLine(index, chars) {
+    /* 只在当前播报的容器里找行 —— 欢迎字幕与回复都在 DOM 里，
+       全局 querySelectorAll 会串台（拿到另一边的行）。 */
+    var root = speakRoot || document;
+    /* 排除正在退场的旧轨道 —— 它还要在 DOM 里留 260ms 播淡出，
+       不排除的话它的三行会排在新轨道前面，索引整体错位。 */
+    var el = root.querySelectorAll('.greet__track:not(.greet__track--out) .greet__line')[index];
+    if (!el) return;
+    var text = el.getAttribute('data-text') || el.textContent;
+    if (!el.getAttribute('data-text')) el.setAttribute('data-text', text);
+    var n = Math.max(0, Math.min(chars, text.length));
+    var said = text.slice(0, n), rest = text.slice(n);
+    el.textContent = '';
+    if (said) {
+      var a = document.createElement('span');
+      a.className = 'greet__said';
+      a.textContent = said;
+      el.appendChild(a);
+    }
+    if (rest) el.appendChild(document.createTextNode(rest));
+  }
+
+  /* 逐句播：念完一句才把下一句推成首行（is-current），过程中不滚动。
+     用递归而不是循环，因为每句时长由 TTS 决定，只有 onend 才知道。
+     句内进度靠 onboundary（逐字/逐词回调）上色；中文 TTS 常不触发它，
+     所以另挂一个按句长估算的定时器兜底，保证颜色总会走完 —— 见 startProgress。 */
+  function speakLine(lines, i) {
+    if (i >= lines.length) { endSpeak(); return; }
+    var u = new SpeechSynthesisUtterance(lines[i]);
+    u.lang = 'zh-CN';          /* 不指定会按系统语言读中文，念成乱码音 */
+    /* 声音跟着当前形象：形象一（女性）→ 女声，形象二（男性）→ 男声。
+       见 pickVoice 的注释（系统不一定装了对应性别的中文语音）。 */
+    var v = pickVoice(current === 1 ? '男' : '女');
+    if (v) u.voice = v;
+
+    /* 兜底按「句」而不是按「整篇」计时：回复有十几句、念下来远超 15s，
+       整篇计时会在中段把播报掐断。句长再按字数放宽 ——
+       长句念过 15s 是常事，定值会把没念完的句尾切掉。 */
+    clearTimeout(speakTimer);
+    speakTimer = setTimeout(endSpeak, SPEAK_MAX_MS + lines[i].length * 300);
+    paintLine(0, 0);           /* 当前句恒在窗口第一行，新句从「全未播」开始 */
+    /* onboundary 每读到一个字/词就来一次，charIndex 是相对整句的偏移 */
+    u.onboundary = function (e) {
+      if (typeof e.charIndex === 'number') { stopProgress(); paintLine(0, e.charIndex + (e.charLength || 1)); }
+    };
+    /* 这句念完 → 整句点亮，再推进下一句；出错也推进，否则会卡在第一句 */
+    u.onstart = function () { offSpeakListener(); startProgress(0, lines[i].length); };
+    u.onend = function () { stopProgress(); paintLine(0, lines[i].length); advanceLine(lines, i + 1); };
+    u.onerror = function () { stopProgress(); advanceLine(lines, i + 1); };
+    try { speechSynthesis.speak(u); } catch (err) { advanceLine(lines, i + 1); }
+  }
+
+  /* 兜底进度：onboundary 不来时（中文 TTS 常见），按句长与语速估算推进。
+     18 字/秒 ≈ 中文 TTS 常见语速；它只是让颜色匀速走完，不追求与声音严格对齐。 */
+  var progressTimer = null;
+  function startProgress(index, len) {
+    stopProgress();
+    var chars = 0;
+    progressTimer = setInterval(function () {
+      chars += 1;
+      if (chars >= len) { stopProgress(); return; }
+      paintLine(index, chars);
+    }, 1000 / 18);
+  }
+  function stopProgress() {
+    if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  }
+
+  function advanceLine(lines, next) {
+    /* 已不在播报态就不再往下念 —— 用户点「停止」后 cancel() 只是不再发声，
+       队列里剩余 utterance 的 onend 仍可能异步回调，会把播报重新拉起来。 */
+    if (!document.documentElement.classList.contains('js-speaking')) return;
+    if (next >= lines.length) { endSpeak(); return; }
+    shiftGreetWindow(lines, next);
+    speakLine(lines, next);
+  }
+
+  /* 换句：重排成新的三行窗口，并让整条轨道从下方滑入原位。
+     **同步重排**（不等动画）是为了让 speakLine 的 paintLine 立即作用在新首行上；
+     视觉上的「旧句上移消失」由新窗口整体从下方滑上来完成 ——
+     旧首行被替换掉了，但它原本的位置正是新轨道滑入路径的上方，
+     观感与「上移一格」一致。 */
+  function shiftGreetWindow(lines, next) {
+    var box = speakRoot;                 /* 欢迎区或回复区，由 speakText 指定 */
+    if (!box) return;
+    /* 只认还在场上的那条 —— 上一句的退场轨道还在 DOM 里淡出，取到它会量错步距。 */
+    var oldTrack = box.querySelector('.greet__track:not(.greet__track--out)');
+    /* 量一行的步距（行高 + 行间距），作为滑入距离。 */
+    var step = 0;
+    if (oldTrack && oldTrack.children.length > 1) {
+      var c = oldTrack.children;
+      step = c[1].getBoundingClientRect().top - c[0].getBoundingClientRect().top;
+    } else if (oldTrack && oldTrack.children.length) {
+      step = oldTrack.children[0].getBoundingClientRect().height;
+    }
+
+    var fresh = document.createElement('div');
+    fresh.className = 'greet__track';
+    for (var i = 0; i < WINDOW_LINES && next + i < lines.length; i++) {
+      fresh.appendChild(makeLine(lines[next + i], i === 0));
+    }
+    /* 先摆到下方、且不参与过渡，再放开 —— 否则浏览器会把初始位移一起过渡掉 */
+    fresh.style.transition = 'none';
+    fresh.style.transform = 'translateY(' + step + 'px)';
+    /* 旧轨道整条上移一格后移除。**同步**做（不延迟），让新首行立刻能被 paintLine 找到；
+       旧轨道的上移 + 淡出由它自己的 transition 走完，再真正摘掉。
+       只换掉旧轨道，**不整体清空** —— greet-box 里靠后还常驻着加载气泡与回复区，
+       innerHTML = '' 会把它们删掉（踩过：播到第二句时答案区消失）。 */
+    if (oldTrack) {
+      /* 先量它在窗口里的原位（还在流内，量得准），改成绝对定位后钉回同一处 ——
+         否则 auto top 会按静态位置落到新轨道下面。
+         顺序：量 → 挂退场类（absolute + transition）→ reflow → 写位移和透明度，
+         少了中间那次 reflow 浏览器不会过渡，旧轨道会直接瞬移。 */
+      var outTop = oldTrack.offsetTop;
+      oldTrack.style.top = outTop + 'px';
+      oldTrack.classList.add('greet__track--out');
+      void oldTrack.offsetWidth;
+      oldTrack.style.transform = 'translateY(' + (-step) + 'px)';
+      retireTrack(oldTrack);
+    }
+    box.insertBefore(fresh, box.firstChild);
+    void fresh.offsetWidth;          /* 强制 reflow，让起始位置定住 */
+    fresh.style.transition = '';
+    fresh.style.transform = '';
+    /* 新轨道里当前句就在第一行 —— 把滚动位置归零，当前句恒贴顶。
+       内容不超高时 scrollTop 本来就只能是 0，这一句是空操作。 */
+    box.scrollTop = 0;
+  }
+
+  /* 旧轨道停在上方淡出，过渡走完再摘 —— 直接 remove 会连淡出一起掐掉。
+     它是绝对定位浮在窗口外的（见 .greet__track--out），不占布局、不影响新轨道。 */
+  function retireTrack(track) {
+    setTimeout(function () {
+      if (track.parentNode) track.parentNode.removeChild(track);
+    }, 260);   /* 略长于 --dur-short(220ms)，确保淡出走完 */
+  }
+
+  /* 按性别挑一个中文语音。
+     只能从系统已装的语音里选 —— 浏览器不给「男声/女声」这种分类，只能认名字。
+     认不出的机器（包括多数安卓微信）会返回 null，调用方回退系统默认音色。
+     shortcut: 靠名字白名单猜性别，装的是未列名的新语音时会猜错；
+     要稳定性别需换成云端 TTS，那时性别由接口参数给。 */
+  var MALE_NAMES = /kangkang|yunxi|yunyang|yunye|yunfeng|yunjian|liang|male|男/i;
+  var FEMALE_NAMES = /huihui|yaoyao|xiaoxiao|xiaoyi|xiaomo|xiaoxuan|female|女/i;
+
+  function pickVoice(gender) {
+    var want = gender === '男' ? MALE_NAMES : FEMALE_NAMES;
+    var voices = [];
+    try { voices = speechSynthesis.getVoices() || []; } catch (err) { return null; }
+    var zh = voices.filter(function (x) { return /^zh/i.test(x.lang); });
+    for (var i = 0; i < zh.length; i++) {
+      if (want.test(zh[i].name)) return zh[i];
+    }
+    return null;   /* 没有匹配的中文语音 → 用默认音色 */
+  }
+
+  /* ---- 首次点击补播：微信路径加载时的 speak 被自动播放策略拦掉
+     （表现是 onstart 永远不来、也无报错），用户第一次点页面任意处、
+     手势到位的那一刻，把同一句补上。桌面 Chrome 有手势时 onstart 会来，
+     监听立即自撤，行为不变。 ---- */
+  var pendingReplay = false;     /* 加载时那次没出成声 → 等首次点击 */
+
+  function onSpeakListener() {
+    if (!pendingReplay) return;
+    offSpeakListener();
+    pendingReplay = false;
+    speakGreeting();             /* 此刻在点击事件里，手势有效 */
+  }
+  function offSpeakListener() {
+    document.removeEventListener('pointerdown', onSpeakListener);
+  }
+
+  /* 微信路径专用：加载时播一次，并备好补播。 */
+  function speakGreetingWx() {
+    pendingReplay = true;
+    document.addEventListener('pointerdown', onSpeakListener);
+    speakGreeting();
+  }
+
+  /* ---- 播报中：底部两个钮换成播报钮。欢迎字幕播完保留显示。 ---- */
+  var speakTimer = null;       /* 兜底定时器：见下面「为什么不能只靠 onend」 */
+
+  function startSpeak() {
+    document.documentElement.classList.add('js-speaking');
+    syncAvatarLock();   /* 播报中禁用形象切换（与录音态同一套压暗外观） */
+    /* 波形挂 is-live 才开始动（base.css 的 .wave.is-live）*/
+    document.getElementById('speak-wave').classList.add('is-live');
+    /* 兜底：onend 在某些内核上不触发（合成被系统切走、标签页转后台等），
+       那样按钮会永久停住。上限由 speakLine 按句续上（见那里），这里只兜底首句。 */
+    clearTimeout(speakTimer);
+    speakTimer = setTimeout(endSpeak, SPEAK_MAX_MS);
+  }
+
+  function endSpeak() {
+    if (!document.documentElement.classList.contains('js-speaking')) return;   /* 幂等 */
+    clearTimeout(speakTimer);
+    speakTimer = null;
+    stopProgress();
+    document.documentElement.classList.remove('js-speaking');
+    syncAvatarLock();   /* 播报结束解除禁用（若仍在录音则保持禁用） */
+    document.getElementById('speak-wave').classList.remove('is-live');
+    /* 欢迎语播完 → 还原成静态两行；回复播完 → 收起回复、欢迎字幕回来。
+       两处都要还原静态行：播报期间 h1/p 已被逐句轨道替换掉了。 */
+    if (speakRoot === document.getElementById('greet-box') && greetSource) {
+      renderStaticGreet(greetSource.hi, greetSource.sub);
+    } else if (speakRoot === document.getElementById('answer')) {
+      /* 回复读完（自然播完或中途点停）都走这里：
+         内容收起、欢迎字幕复位；留一个 .js-replayable 让重播钮继续在场。 */
+      document.documentElement.classList.remove('js-answered');
+      document.documentElement.classList.add('js-replayable');
+      if (greetSource) renderStaticGreet(greetSource.hi, greetSource.sub);
+    }
+  }
+
+  /* 恢复初始静态态：h1 + p，与脚本运行前的 DOM 完全一致。
+     不能只删 .is-current —— 那样留下的是一堆 .greet__line 短文，
+     与原始排版（两句各占一行、h1 字号）不同。 */
+  function renderStaticGreet(hiText, subText) {
+    var box = document.getElementById('greet-box');
+    /* 只清掉「上一次播报留下的行」，**不整体清空** ——
+       取消输入用框里有常驻的加载气泡与回复区（#answer-typing / #answer），
+       innerHTML = '' 会把它们一起删掉，之后提交提问就找不到节点。
+       这里按类名精确移除：轨道容器里的行，以及散落的 .greet__hi/.greet__sub。 */
+    var junk = box.querySelectorAll('.greet__track, .greet__line, .greet__hi, .greet__sub');
+    for (var i = 0; i < junk.length; i++) junk[i].parentNode.removeChild(junk[i]);
+    var h = document.createElement('h1');
+    h.className = 'greet__hi';
+    h.id = 'greet-hi';
+    h.textContent = hiText;
+    var p = document.createElement('p');
+    p.className = 'greet__sub';
+    p.id = 'greet-sub';
+    p.textContent = subText;
+    /* 插到最前面：加载气泡与回复区在 DOM 里靠后，保持它们在后面 */
+    box.insertBefore(h, box.firstChild);
+    box.insertBefore(p, h.nextSibling);
+  }
+
+  /* 判定**只看 UA**（MicroMessenger）。
+     曾在这里加过「同时要有触摸 + 小屏」的附加条件，想挡掉桌面微信；
+     结果真机微信也被挡了（`screen.width` 在安卓微信里常报物理分辨率，
+     远大于 768）。真机实测优先于推测，去掉该条件 ——
+     代价是桌面微信也会按微信端处理（它没有公众号授权能力），
+     这个单一规则更好预期，也符合「微信浏览器里就该走微信那套」。 */
+
+  /* 刷新后恢复登录态：auth.js 把登录结果写在 localStorage['skl.user']，
+     之前只写不读，导致每次刷新都要重新扫码。这里读回来，直接进授权态。
+     **不重播欢迎语** —— 用户是刷新页面，不是刚登录；再来一遍会被当成噪音。
+     微信端没有「未登录」态，照旧走 grant()（含自动播报）。 */
+  function hasStoredLogin() {
+    try { return !!localStorage.getItem('skl.user'); } catch (err) { return false; }
+  }
+
+  if (isWx) grant();
+  else if (hasStoredLogin()) {
+    /* 只切底部动作区；欢迎语本来就是静态 HTML，不用还原。 */
+    document.documentElement.classList.add('js-granted');
+  }
+
+  /* 授权确认弹窗。老内核（部分微信 X5）无 showModal，
+     只写 if 的话点了没反应 —— 同转写弹窗的兜底写法。 */
+  var authSheet = document.getElementById('auth-sheet');
+
+  function openAuthSheet() {
+    if (typeof authSheet.showModal === 'function') authSheet.showModal();
+    else authSheet.setAttribute('open', '');
+  }
+  /* 关闭一律按「未授权」——取消钮、Esc、点遮罩都走这条。
+     链接到 dialog 的 cancel 事件收拢，不逐个按钮写：Esc 关窗不经过任何按钮。 */
+  function closeAuthSheet() {
+    if (typeof authSheet.close === 'function') authSheet.close();
+    else authSheet.removeAttribute('open');
+  }
+  authSheet.addEventListener('cancel', function () { closeAuthSheet(); });
+
+  if (!isWx) {
+    document.getElementById('btn-start').addEventListener('click', openAuthSheet);
+    /* 点占位二维码 = 演示「扫上了」→ 授权成功。没有别的按钮。 */
+    document.querySelector('.authq__qr').addEventListener('click', function () {
+      grant();
+      closeAuthSheet();
+    });
+  }
+
+  /* 重新播放：重念当前这条回复。只在「有回复」或「播报被停掉」时出现
+     （见样式里的显隐规则）—— 两种态下回复内容都还在（#answer 里）。
+     播报中再点会先 cancel 掉上一条 —— speakLine 里的 speak() 本身不 cancel，
+     所以要自己断掉当前这次，否则两条声音叠着念。
+     重播也要走 startSpeak，否则底部不会切到播报钮。 */
+  document.getElementById('btn-replay').addEventListener('click', function () {
+    try { speechSynthesis.cancel(); } catch (err) { /* 老内核 */ }
+    stopProgress();
+    /* 从「停掉后收起」的态回来：重新露出回复区，收掉欢迎字幕。 */
+    document.documentElement.classList.remove('js-replayable');
+    document.documentElement.classList.add('js-answered');
+    startSpeak();
+    speakText(splitAnswer(DEMO_ANSWER), answerEl);
+  });
+
+  /* 播报中的圆钮 = 停止：断掉语音、清掉队列残留与进度定时器，再 endSpeak 收尾。
+     「停的是回复 → 收起回复、欢迎字幕回来」这件事由 endSpeak 统一做，
+     这里不重复 —— 自然播完与中途点停走同一条收尾。 */
+  document.getElementById('btn-speaking').addEventListener('click', function () {
+    try { speechSynthesis.cancel(); } catch (err) { /* 老内核 */ }
+    stopProgress();
+    endSpeak();
+  });
+
+  /* ---- 三处联动的状态渲染 ---- */
+  function render(next) {
+    state = next;
+    var rec = next === 'recording';
+    var busy = next === 'recognizing';
+
+    /* 收音状态文字：录音中「我在听，你说」，识别中「正在思考...」。
+       两态都留在 .is-rec 里（字幕保持隐藏），直到确认弹窗弹出才恢复 ——
+       见 finishRecognize 里摘 is-rec 的位置。 */
+    listenText.textContent = busy ? '正在努力翻译...' : '我在听，你说';
+    listenText.classList.toggle('is-live', rec || busy);
+
+    mic.setAttribute('aria-pressed', String(rec));
+    mic.classList.toggle('iconbtn--brand', rec);
+    mic.classList.toggle('is-busy', busy);
+    /* 识别中按钮不再可点：此时再点是"取消识别"这种需求之外的语义，
+       直接禁用比让它变成一个含义不明的开关更清楚。 */
+    mic.disabled = busy;
+    mic.setAttribute('aria-label',
+      busy ? '正在识别录音' : (rec ? '结束录音' : '录音提问'));
+
+    /* 波形在录音与识别两态都可见、都在动；识别结束（回 idle）才隐去。
+       这一个类同时管「显隐」与「动画」，容器始终占位，布局不动。
+       容器也要挂：文字是波形的兄弟节点，只藏波形文字会留在首屏。 */
+    var live = rec || busy;
+    wave.classList.toggle('is-live', live);
+    listenRow.classList.toggle('is-live', live);
+    /* 录音与识别两态都算「收音态」：欢迎字幕一直隐藏、波形与状态文字留在原处。
+       真正摘掉是在 finishRecognize 里、确认弹窗弹出之后（见那里）。 */
+    document.documentElement.classList.toggle('is-rec', rec || busy);
+
+    setBlocked();
+  }
+
+  /* 识别完成 → 弹出可编辑的确认框，用户改完点「发送」才确认内容。
+     这一步不能省：识别结果常有错字，直接发出去就把错字带上了。
+     两端同一条路径（非微信没有语音入口，走不到这里；将来放开也是这套）。 */
+  function finishRecognize() {
+    recognizeTimer = null;
+    render('idle');   /* 波形停、按钮复位；is-rec 不在这里摘，见下 */
+    speechText.value = DEMO_SPEECH;
+    /* 兜底分支不能省：老内核（部分微信 X5）没有 showModal，
+       只写 if 的话弹窗永远不弹 —— 表现就是「点完录音什么也没发生」。
+       兜底用 setAttribute('open')，配套定位见 base.css 的 @supports not selector(dialog:modal)。 */
+    if (typeof speechSheet.showModal === 'function') speechSheet.showModal();
+    else speechSheet.setAttribute('open', '');
+    speechText.focus();
+    /* 确认弹窗已出来，才让欢迎字幕回来 —— 比上面 render('idle') 更晚一步，
+       否则字幕会先闪出来、再被弹窗盖住。
+       （波形的 is-live 已由 render('idle') 一并摘掉，这里不用重复。） */
+    document.documentElement.classList.remove('is-rec');
+  }
+
+  /* 关弹窗：同样两条路。只调 close() 的话，走兜底打开时这条是空操作，
+     弹窗关不掉（点取消没反应）。 */
+  function closeSheet() {
+    if (typeof speechSheet.close === 'function') speechSheet.close();
+    else speechSheet.removeAttribute('open');
+  }
+
+  /* 录音不做登录校验：本页的登录统一在加载时完成（微信调授权），
+     所以走到这里身份已经确定了。原先在此处 require 的写法已移除 ——
+     校验前移后，每个操作点再拦一遍只会多出重复的弹层路径。 */
+  mic.addEventListener('click', function () {
+    /* 播报中不接录音：整个 .dock 已被 `js-speaking` 藏掉，真实用户点不到，
+       但脚本/自动化仍能 .click() 进来 —— 不早退会出现「录音中 + 播报中」
+       双态并存，两套底部动作区同时活。 */
+    if (document.documentElement.classList.contains('js-speaking')) return;
+    if (state === 'idle') { render('recording'); return; }
+    if (state === 'recording') {
+      render('recognizing');
+      recognizeTimer = setTimeout(finishRecognize, RECOGNIZE_MS);
+    }
+  });
+
+  /* 录音期间的互斥保护。键盘钮是 <a href>，摘掉 href 才能真正拦住导航；
+     形象切换钮是 button，靠这里拦住。两处都给同一条提示。 */
+  var BLOCKED_MSG = '正在录音';
+
+  /* 形象切换钮的禁用范围比「录音中」更宽：播报中也禁止 ——
+     形象决定播报音色（形象一 = 女声 / 形象二 = 男声），念到一半换形象会让
+     声音与形象对不上。
+     **禁用的两种情形外观必须一致**（都是 .is-blocked 压暗），且**不弹 toast** ——
+     它不像键盘/重播那样是「点错了」的操作，而是本来就不该在这时可用，
+     给提示反而多话。 */
+  function isAvatarLocked() {
+    return isRecording() || document.documentElement.classList.contains('js-speaking');
+  }
+  /* 把禁用态同步到形象钮。录音与播报两个状态都调它 ——
+     .is-blocked 由这里统一挂，不再依赖 setBlocked 那条只认录音的路径。 */
+  function syncAvatarLock() {
+    var locked = isAvatarLocked();
+    changeAvatarBtn.classList.toggle('is-blocked', locked);
+    changeAvatarBtn.setAttribute('aria-disabled', String(locked));
+    if (locked) changeAvatarBtn.setAttribute('tabindex', '-1');
+    else changeAvatarBtn.removeAttribute('tabindex');
+  }
+
+  keyboardBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (isRecording()) {   /* 录音中照旧拦住，不能切走 */
+      toast(BLOCKED_MSG);
+      return;
+    }
+    /* 播报中同样不接：与 mic 同一条理由（.dock 已藏，只有脚本能点到）。 */
+    if (document.documentElement.classList.contains('js-speaking')) return;
+    openInputBar();
+  });
+
+  /* ---- 键盘输入条：点键盘钮换上来，X 或发送后回到三个圆钮 ---- */
+  var inputBar = document.getElementById('inputbar');
+  var inputField = document.getElementById('input-field');
+  var sendBtn = document.getElementById('btn-send-input');
+
+  function openInputBar() {
+    document.documentElement.classList.add('js-input');
+    inputBar.hidden = false;
+    inputField.value = '';
+    syncSendState();      /* 清空后按钮回到置灰态 */
+    inputField.focus();
+  }
+  /* 关闭：收回输入条、清空内容，底部自动回到三个圆钮（.js-input 一摘即恢复）。
+     发送与取消走同一条 —— 演示站没有对话页可跳，发送不额外做事。 */
+  function closeInputBar() {
+    document.documentElement.classList.remove('js-input');
+    inputBar.hidden = true;
+    inputField.value = '';
+    syncSendState();
+    inputField.blur();
+  }
+
+
+  /* 发送钮的置灰跟随输入内容：空 → 无 data-send + disabled（体系 base 规则的置灰态）；
+     有内容 → data-send="ready" 点亮。与 base.css 的三态口径一致，
+     页面只改属性、不写状态样式。 */
+  function syncSendState() {
+    var has = inputField.value.trim().length > 0;
+    sendBtn.disabled = !has;
+    if (has) sendBtn.setAttribute('data-send', 'ready');
+    else sendBtn.removeAttribute('data-send');
+  }
+
+  document.getElementById('btn-cancel-input').addEventListener('click', closeInputBar);
+  sendBtn.addEventListener('click', function () {
+    var text = inputField.value.trim();
+    if (!text) return;          /* 空态按钮已 disabled，双保险 */
+    closeInputBar();
+    submitQuestion(text);
+  });
+  inputField.addEventListener('input', syncSendState);
+  /* 回车 = 发送，和点按钮同一条路；空内容时与禁用态一致，不发也不关 */
+  inputField.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var text = inputField.value.trim();
+    if (!text) return;
+    closeInputBar();
+    submitQuestion(text);
+  });
+  changeAvatarBtn.addEventListener('click', function (e) {
+    if (!isAvatarLocked()) return;
+    e.stopImmediatePropagation();   /* 静默拦住：不给 toast，外观已压暗说明不可用 */
+  }, true);   /* 捕获阶段先拦，避免又把选择弹层推开 */
+  /* 重播钮：录音中点了会把正在录的音打断（播报抢走音频通道），同一口径拦住。
+     捕获阶段拦，避免它先跑到自己的 handler 把播报开起来。 */
+  replayBtn.addEventListener('click', function (e) {
+    if (!isRecording()) return;
+    e.stopImmediatePropagation();
+    toast(BLOCKED_MSG);
+  }, true);
+
+  /* ---- 转写弹窗的动作 ---- */
+  document.getElementById('speech-cancel').addEventListener('click', closeSheet);
+
+  document.getElementById('speech-send').addEventListener('click', function () {
+    var text = speechText.value.trim();
+    if (!text) {
+      speechText.focus();
+      toast('内容不能为空');
+      return;
+    }
+    closeSheet();
+    submitQuestion(text);
+  });
+
+  /* ---- 提交提问 → 加载气泡 → 回复 ---- */
+  /* 演示用的固定回复，约 500 字。真实场景由后端返回，接真接口时替换这里。 */
+  var DEMO_ANSWER = '关于长江经济带的区域协调发展，现有研究成果可以从三个层面来梳理。' +
+    '第一是产业协同层面。长三角城市群与中游城市群之间已经形成较为清晰的产业梯度分工，' +
+    '上海、南京、杭州等地侧重研发设计与总部经济，合肥、武汉、长沙则承担先进制造与成果转化功能，' +
+    '上游的成渝地区在电子信息与装备制造上具备独特优势。相关研究普遍认为，' +
+    '这种梯度分工在提升整体效率的同时，也带来了要素单向流动与低端锁定的隐忧。' +
+    '第二是基础设施互联互通层面。沿江高铁、航道整治、多式联运体系是近年研究的热点，' +
+    '多数文献测得交通可达性提升对区域经济联系强度有显著正向影响，' +
+    '但对中小城市的虹吸效应也存在分歧，部分研究指出枢纽节点周边的县域可能出现人口与产业外流。' +
+    '第三是生态保护与绿色发展层面。长江大保护战略实施以来，' +
+    '关于生态补偿机制、岸线资源管控、化工企业搬迁的实证研究明显增加，' +
+    '较一致的结论是环境规制强度与产业绿色转型之间存在倒U型关系，' +
+    '规制过弱无效、过强则可能抑制短期增长。' +
+    '在研究方法上，智库报告多采用政策文本分析与案例比较，' +
+    '学术论文更常使用空间计量模型测度溢出效应，政策解读则侧重落地路径与考核指标设计。' +
+    '综合来看，这一议题已经从早期的概念倡导走向机制设计与效果评估阶段，' +
+    '但跨省协调的权责划分、利益共享与成本共担机制仍缺乏系统性方案，' +
+    '这也是后续研究需要突破的方向。' +
+    '建议在引用相关成果时，优先关注社科基金重大项目与长江经济带发展研究院的系列报告，' +
+    '它们的时间序列数据较为完整，可直接用于政策效果评估。' +
+    '以上内容均参考自权威资料由AI整理生成。';
+  var ANSWER_LOADING_MS = 3000;   /* 加载气泡停留 3s，给演示留出观察时间 */
+
+  var answerEl = document.getElementById('answer');
+  var answerTimer = null;
+
+  function submitQuestion(text) {
+    /* 先收掉上一轮的声音与播报态：欢迎语还在念时提交，旧的那条 utterance
+       会在回复播报期间继续回调 advanceLine，把回复窗口按欢迎语的句子推开。 */
+    try { speechSynthesis.cancel(); } catch (err) { /* 老内核 */ }
+    endSpeak();
+    /* 进入加载态：欢迎字幕让位给三点气泡。
+       上一次「停掉待重播」的态一并清掉 —— 新问题要出新的回复。 */
+    document.documentElement.classList.remove('js-answered', 'js-replayable');
+    document.documentElement.classList.add('js-answering');
+    clearTimeout(answerTimer);
+    /* 本次提问在演示里不展示，text 只作接线点保留 —— 接真接口时发给后端。 */
+    answerTimer = setTimeout(function () {
+      document.documentElement.classList.remove('js-answering');
+      document.documentElement.classList.add('js-answered');
+      /* 自动播报全文，进度效果与欢迎字幕完全一致（三行窗口 + 逐句上移 + 已播变紫），
+         只是容器从欢迎区换成了回复区。 */
+      startSpeak();
+      speakText(splitAnswer(DEMO_ANSWER), answerEl);
+    }, ANSWER_LOADING_MS);
+  }
+
+  /* 启动时先把欢迎语原文存下来：回复播完要还原它，
+     而播报期间 h1/p 已被逐句轨道替换，那时再读 DOM 就晚了。
+     （speakGreeting 里那句照旧留着，重播路径仍需要。） */
+  var initHi = document.getElementById('greet-hi');
+  var initSub = document.getElementById('greet-sub');
+  if (initHi && initSub) greetSource = { hi: initHi.textContent, sub: initSub.textContent };
+
+  /* 启动：读回上次选的形象，再进入 idle */
+  current = recallAvatar();
+  applyAvatar(current);
+  render('idle');
+})();
+</script>
+</body>
+</html>
