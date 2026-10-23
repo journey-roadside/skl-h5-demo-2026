@@ -203,6 +203,11 @@ body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   position: relative;   /* 退场的旧轨道按它定位，否则会跑到 #greet-box 顶上 */
+  /* 长回复在本区内滚。底部渐隐遮罩（#greet-box::after，高 1.1em）贴盒子底边，
+     滚动到底时最后一行会被盖住。留一段略高于遮罩的底部内边距，让它能滚出遮罩。
+     1.3em 而非 1.1em：等于遮罩高时两者边界重合，取整后仍差 1px。
+     副作用：内容不超高时也会多 1.3em 空白，但那时 scrollTop 恒为 0、看不见。 */
+  padding-bottom: 1.3em;
 }
 .js-answered .answer::-webkit-scrollbar { display: none; }
 .js-answered .answer .greet__line {
@@ -472,6 +477,38 @@ dialog.modal.authq {
 /* button 重置后文字仍按继承对齐：弹窗 .modal 标题默认左对齐，这里居中 */
 .authq h2 { text-align: center; }
 
+/* ---- 协议确认弹窗 ---- */
+#proto-sheet { width: 300px; max-width: calc(100% - var(--sp-xl) * 2); }
+#proto-sheet h2 { text-align: center; }
+/* 标题只是接焦点的落点（见 DOM 注释），不该画出焦点框 */
+#proto-sheet h2:focus,
+#proto-sheet h2:focus-visible { outline: none; }
+.protosheet-intro {
+  margin-top: var(--sp-xs);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+  text-align: center;
+}
+/* 两条协议用 .row 骨架，右侧外链图标（语义是「跳出去」，不是进下一级）。
+   行高按热区收缩：弹窗只有 300px 宽，.row 默认 padding 在弹层里偏肥。 */
+#proto-sheet .rowlist { margin-top: var(--sp-md); }
+#proto-sheet .row { padding: var(--sp-sm) var(--sp-md); min-height: var(--h-tap); }
+#proto-sheet .row:hover { background: var(--mist-1); }
+.proto__name { flex: 1 1 auto; font-size: var(--text-base); color: var(--ink); }
+.proto__ext { flex: 0 0 auto; width: 18px; height: 18px; color: var(--ink-3); }
+#proto-sheet .proto__link,
+#proto-sheet .proto__link:hover { text-decoration: none; }
+
+/* 矮横屏（568×320 实测）：弹窗 335px 高装不下，按钮被切在底部。
+   收紧纵向：隐藏说明句、行与按钮间距各降一级、弹窗内边距减半。 */
+@media (max-height: 399.98px) {
+  #proto-sheet { padding-top: var(--sp-md); padding-bottom: var(--sp-md); }
+  .protosheet-intro { display: none; }
+  #proto-sheet .rowlist { margin-top: var(--sp-sm); }
+  #proto-sheet .row { min-height: 0; padding: var(--sp-xs) var(--sp-md); }
+  #proto-sheet .cluster { margin-top: var(--sp-md); }
+}
+
 /* 授权后把两个图标钮换回来，同时收起「立即对话」。
    播报中（.js-speaking）两个钮让位给播报钮，播完再换回来。 */
 .js-granted .dock { display: flex; }
@@ -622,56 +659,151 @@ dialog.modal.authq {
 }
 
 /* --------------------------------------------------------------------------
-   矮横屏：把这一屏压进视口，不再纵向滚动
+   矮横屏：左右分栏，把横向余量换给形象
    --------------------------------------------------------------------------
-   上面那句 `calc(100dvh - 334px)` 的 334 是按**竖屏**内容标定的。横屏一矮
-   （320~430px 是常态），100dvh - 624 直接变负数，被 clamp 顶到 190px 下限，
-   而 190px 对这么矮的视口仍然太大 —— 页面就开始纵向滚动。
+   横屏只有三百多像素高，而纵向堆叠时「形象 + 问候语 + 收音行」三块要一起挤，
+   844×390 上形象只剩 82px —— 人物几乎看不出是谁。
 
-   两处一起改，缺一不可：
+   但横屏左右有大片空白：内容列只有 640px 宽（视口 844），两侧各空 102px。
+   所以改成左右分栏，形象独占左列、吃满整个 stage 的高度，右列放
+   问候语 + 收音行。形象由「纵向被挤压」变成「由可用高度决定」。
 
-   1) 底部让位收掉。那 104px 是给**底部**按钮区留的，而横屏下（见文件末尾的
-      查询）按钮已经挪到左侧、不再占据底部，这 104px 纯是浪费。
-      **只限横屏**：竖屏下按钮仍在底部，这层让位必须留着。
-   2) 形象位允许压到 110px。190px 是为竖屏矮机定的下限，对横屏太松。
-
-   248 这个常数 = 形象位之外的**全部**纵向开销，实测：
-     16 上内边距 + 36 顶行 + 12 形象上边距 + 81 问候语区（横屏不折行）
-     + 91 收音行 + 12 下内边距（安全区）= 248
-   **收音行是 91 不是 56**（波形 40 + 间距 8 + 文字 27 + 上内边距 16）。
-   早先按 56 记，矮横屏三档各多溢出 35px。
-   （AI 标识已并入顶行，不再单独占纵向空间。）
-   于是 110px 下限对应的最小视口 = 358px；更矮时才会整页滚动。 */
+   两处配合，缺一不可：
+   1) 底部让位收窄：104 → 72（按钮直径 + 安全区）。
+      **只限横屏**：竖屏纵向宽裕，保持原值。
+   2) stage 显式定高 —— 详见下方 .home__stage 的注释。 */
 @media (orientation: landscape) and (max-height: 519.98px) {
-  .home__main--hasdock {
-    padding-bottom: var(--pad-bottom);   /* 底部已无按钮，只留安全区 */
+  /* 横屏把「形象」与「问候语 + 收音行」改为左右分栏。
+     原来三块纵向堆叠，形象的可用高度被问候语和收音行挤到 82px（844×390）；
+     而横屏左右各有上百像素是空的 —— 内容列只有 640px 宽，视口 844。
+     分栏后形象能吃满整个 stage 的高度，纵向开销只剩顶部行与底部让位。
+     左形象 / 右文字：形象贴左，与顶部「内容由 AI 生成」同侧。 */
+  .home__stage {
+    display: grid;
+    /* 形象列宽上限 300px（与竖屏基准一致），高度由 stage 决定；
+       右栏吃剩余宽度。形象宽高比 1:1，所以列宽也直接决定形象高度 ——
+       给上限是为了不让它在宽横屏里被拉成巨幅。 */
+    grid-template-columns: minmax(120px, min(300px, 38%)) minmax(0, 1fr);
+    grid-template-areas:
+      "figure greet"
+      "figure listen";
+    /* 两行都给 minmax(0, 1fr)：形象的 1:1 比例会反过来撑高行高（循环依赖），
+       显式 1fr + 允许压到 0 才能让它服从 stage 的可用高度。 */
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--sp-md);
+    row-gap: 0;
+    /* **必须显式定高**。body 只有 min-height:100dvh、高度 auto，
+       .home__main 又是 flex:1 1 auto —— 内容多高 body 就多高，flex 的收缩
+       从来不会触发，于是 stage 会按形象 1:1 撑到列宽那么多，整页往下滚。
+       定高后形象改由可用高度决定，与竖屏那套「定高换位置稳定」同理。 */
+    height: calc(100dvh - var(--sp-md) - 36px - var(--h-dock) - var(--pad-bottom));
+    min-height: 0;
   }
-  /* 横屏视口宽，副标题不会折行，全高只需 81px（竖屏按窄屏最坏的 110 留会白撑 29）。 */
-  .home__greet { height: 81px; }
-  :root { --greet-h: 81px; }   /* 录音时波形上移的距离要跟着变 */
+  /* 纵向堆叠时用一对弹性占位伪元素做垂直居中。改成 grid 后它们会变成
+     额外的 grid 项、被自动放进网格里，撑坏显式区域 —— 这里删掉。 */
+  .home__stage::before,
+  .home__stage::after { display: none; }
+  /* 分栏后由 grid 定位，原先纵向堆叠的 margin / 高度都不再需要。
+     高度用 100% 撑满整列：形象按 stage 高度等比缩放，
+     宽度由 grid 的列宽上限管住，不会被拉成巨幅。 */
   .figure--hero {
-    height: clamp(110px, calc(100dvh - 248px), var(--figure-hero));
+    grid-area: figure;
+    max-width: none;
+    margin: 0;
+    height: 100%;
+    align-self: stretch;
+  }
+  .home__greet {
+    grid-area: greet;
+    /* **必须定高，不能用 auto**。竖屏定高是为了「数字人不动」（见 --greet-h 注释）；
+       横屏分栏同样需要 —— 播报换句时轨道行数/字重变化会让盒子长高，
+       配合 align-self:end 就会顶着底边往上长，字幕看起来逐渐上移。
+       定成 100%：盒高锁死在网格行高上，内容超出走内部滚动。 */
+    height: 100%;
+    align-self: stretch;
+    padding-top: 0;
+    text-align: left;
+    overflow: hidden;   /* 与竖屏同口径：超出部分由 #answer 内部滚 */
+    /* 内容贴行底。定高后盒子撑满整行，若不指定对齐，短内容会堆在行顶、
+       下方空一片；贴底才与改前「align-self:end + 高度 auto」的观感一致。 */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  /* 收音行在右栏下方。它原本靠负 top 上移到字幕盒中央，
+     分栏后不再需要那套校正 —— 归零，回到自身所在的格子里。 */
+  .listening {
+    grid-area: listen;
+    top: 0;
+    align-self: start;
+    align-items: flex-start;
+    padding-top: var(--sp-xs);
+  }
+  /* 录音中：波形与状态文字移到「回复信息区域」正中。
+     该区域就是右栏（greet + listen 两行）。问候语此时 visibility:hidden
+     但仍占位，所以让收音行直接铺满两行并居中，正好压在那块空白上。
+     放在本条之后、且同为 (0,2,0)，才能盖住上面的 listen 格子定位。 */
+  .is-rec .listening {
+    grid-row: 1 / -1;
+    grid-column: 2;
+    align-self: stretch;
+    justify-self: stretch;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0;
+    /* 竖屏那套负 top 位移是「贴到字幕盒中央」用的，分栏后由 grid 居中，
+       必须归零，否则整块被顶到 stage 上方（实测 y=-49）。 */
+    top: 0;
+  }
+  /* 播报态：回复区铺满右栏两行（266px 而非半行 133px）。
+     原来只占第一行，长首句（31 字折 3 行）就撑满并顶到 stage 顶部。
+     铺满后容纳能力翻倍，底边固定、内容向上生长的空间也够。
+     **不做垂直居中**：换句时块高波动 34px，居中会让字幕上下跳
+     （实测 91→88→57），与「播报时字幕固定」冲突。 */
+  .js-answered .home__greet {
+    grid-row: 1 / -1;
+    height: 100%;
+    /* 视觉居中：内容块在右栏里上下留白均分。
+       贴底（flex-end）时短回复会吊在底部，观感不平衡。 */
+    justify-content: center;
+    padding-bottom: var(--sp-md);
+  }
+  /* 等待回复的三点泡泡居中于「回复信息区域」（右栏整个区域，含收音行）。
+     #greet-box 只占上半行，在其中居中会偏上；这里让 greet 铺满右栏两行，
+     再把唯一的可见子项（泡泡）双向居中。
+     只影响 js-answering 这一态，播报/欢迎态的贴底与布局不受影响。 */
+  .js-answering .home__greet {
+    grid-row: 1 / -1;
+    height: 100%;
+    justify-content: center;
+    overflow: visible;      /* 泡泡不需要滚动容器 */
+  }
+  .js-answering .answer-typing { align-self: center; }
+
+  /* 按钮回到下方后，让位只需「按钮直径 + 安全区」（104 → 72），
+     省下的 32px 全给形象位。竖屏仍用基类的 104 —— 那里纵向宽裕。 */
+  .home__main--hasdock {
+    padding-bottom: calc(var(--h-dock) + var(--pad-bottom));
   }
 }
-/* 极矮横屏（≤339px，实测最极端是 568×320）：上面那档按 110px 形象下限算，
-   最少要 358px 视口；再矮就会滚。这一档把下限放到 72px ——
-   72 = 320 − 248，刚好卡在 568×320 一屏不滚（75px 时还差 3px）。
-   形象仍是可辨认的半身像，换来严格一屏不滚。 */
-@media (orientation: landscape) and (max-height: 339.98px) {
-  .figure--hero {
-    height: clamp(72px, calc(100dvh - 248px), var(--figure-hero));
+/* 极矮横屏（≤369px，覆盖 568×320 与 640×360）：左右空间也紧张了，
+   分栏比例偏向形象，并缩小问候语字号给右栏让宽。 */
+@media (orientation: landscape) and (max-height: 369.98px) {
+  .home__stage {
+    grid-template-columns: minmax(96px, 1fr) minmax(0, 1fr);
+    column-gap: var(--sp-sm);
   }
-  /* 「立即对话」在极矮横屏下会横跨到页面中部、压在问候语上（实测 568×320
-     与字幕叠了 44px）。收窄并贴到左缘 —— 与三个圆钮同一列，横屏左侧通栏
-     本来就是动作区。已授权态它不显示，只有未授权才会看到。 */
+  .greet__hi { font-size: var(--text-md); }
+  /* 右栏只有 254~290px，副标题按基类字号会折两行、把问候区顶高。
+     缩一档让它保持一行（横屏左右分栏本来就窄）。 */
+  .greet__sub { font-size: var(--text-sm); }
+  /* 「立即对话」在极矮横屏下横跨感过强。收窄 —— 横屏可用宽度本就紧张，字号缩一档。 */
   .dock-cta {
-    left: var(--pad-start);
-    transform: none;
     padding: 0 var(--sp-lg);
     min-width: 0;
     font-size: var(--text-xs);
   }
-  .dock-cta:active { transform: translateY(1px); }
 }
 
 /* ---- 形象选择弹层（原生 dialog，见 DESIGN.md D8） ---- */
@@ -748,49 +880,33 @@ dialog.modal.authq {
 .is-blocked:active { transform: none; }
 
 /* ==========================================================================
-   矮横屏：三个动作区改到屏幕左侧、垂直居中
+   矮横屏：动作区仍在底部居中（与竖屏同构），只把间距收紧
    ==========================================================================
-   只在**矮横屏**（横屏 + 高度 < 520px）生效 —— 手机横过来是典型场景：
-   纵向只剩三百多像素，内容放不下、页面开始滚动，而按钮是 fixed 钉在视口底部，
-   会压在问候语那几行字上（844×390 实测）。挪到左侧通栏空处，既避开文字，
-   也顺带利用了横屏多出来的横向空间。
+   横屏 + 高度 < 520px 时纵向只有三百多像素。动作区不再挪到左侧 ——
+   统一留在底部，位置与竖屏一致，只做两处收紧：
+     1) 底部呼吸量 --sp-lg(24) 收到 --pad-bottom(12)，让出 8px；
+     2) 造型与位置全部沿用基类，不改 left/transform。
+   纵向空间由两处让出来：上面 .home__main--hasdock 的让位收到 72（基类 104），
+   以及 .home__stage 显式定高时扣掉的那份让位。
 
-   **为什么卡高度而不是宽度**：问题的根因是纵向空间不够，跟屏幕多宽无关。
-   按宽度卡会漏掉「宽屏但很矮」的横屏（如 1280×400），按高度卡正对病根。
-   阈值 520 取自实测两头：手机横屏 375~414 要改，平板横屏 768、桌面横屏 800
-   不必改（那里纵向本来就够，且内容居中 640px 宽时按钮孤悬最左会离得很远）。
-
-   其余情况**一概不受影响**：竖屏、平板竖屏、高横屏都走原来的底部居中。
+   其余情况一概不受影响：竖屏、平板竖屏、高横屏都走原来的底部居中。
 
    **必须放在样式块最末**：`.dock-cta` / `.dock--speak` 的基类规则定义在本块
    之前，同特异性下后写者胜 —— 放前面会被基类静默盖掉（踩过一次：
    三个容器只有 .dock--float 生效，另两个纹丝不动）。 */
 @media (orientation: landscape) and (max-height: 519.98px) {
+  /* 输入条跟着压到最低。基类的 bottom 还留着桌面那份 --sp-lg(24px) 的呼吸量，
+     竖屏有富余、矮横屏没有 —— 实测 844×390 / 667×375 / 568×320 三档都会
+     压住字幕最后一行 16px。收到 --pad-bottom（12px）后三档各让出 8px 空隙。 */
+  .inputbar { bottom: var(--pad-bottom); }
+
+  /* 三个动作区同样收到 --pad-bottom，与输入条同一条底线：
+     谁显示都用同一组坐标，切换时不跳位置。 */
   .dock--float,
   .dock-cta,
   .dock--speak {
-    left: var(--pad-start);          /* 与上方「切换形象」胶囊的左缘对齐 */
-    bottom: auto;
-    top: 50%;
-    transform: translateY(-50%);     /* left 已到位，transform 只做垂直校正 */
+    bottom: var(--pad-bottom);
   }
-  /* 两个图标钮改竖排：录音在上、键盘在下。
-     横屏左侧是一长条窄通栏，左右并排会占掉一大截横向空间；
-     竖排正好嵌进去，也和「上面录音、下面键盘」的阅读顺序一致。
-     方向反过来即可 —— DOM 顺序本来就是 mic 在前、keyboard 在后，
-     不必改结构。居中沿用 .dock 基类的 align-items: center。 */
-  .dock--float { flex-direction: column; }
-
-  /* 按下反馈得单写一条：`.dock-cta:active`（0,2,0）比上面单类名的 (0,1,0) 高，
-     不写的话横屏下按下会把 translateX(-50%) 加回来、横向跳半个身位。
-     这条偏振垂直那 1px。 */
-  .dock-cta:active { transform: translateY(calc(-50% + 1px)); }
-
-  /* 输入条跟着压到最低。基类的 bottom 还留着桌面那份 --sp-lg(24px) 的呼吸量，
-     竖屏有富余、矮横屏没有 —— 实测 844×390 / 667×375 / 568×320 三档都会
-     压住字幕最后一行 16px。收到 --pad-bottom（12px）后三档各让出 8px 空隙。
-     位置仍居中：这里只改纵向，left/transform 沿用基类。 */
-  .inputbar { bottom: var(--pad-bottom); }
 }
 
 /* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写。
@@ -957,6 +1073,36 @@ dialog.modal.authq {
   <button class="authq__qr" type="button" aria-label="演示：已扫码，点击登录">
     <img src="./assets/demo-qr.png" alt="" width="320" height="320" loading="lazy" decoding="async">
   </button>
+</dialog>
+
+<!-- 协议确认。授权成功后弹一次，同意才进入播报态。
+     两条协议地址待定，点击先给 toast 占位（同账户页口径）。
+     取消/Esc 一律回未授权：清 skl.user、恢复「立即对话」。 -->
+<dialog class="modal" id="proto-sheet" aria-labelledby="proto-sheet-title">
+  <!-- tabindex=-1 + autofocus：showModal 默认聚焦第一个可聚焦元素（那条协议链接），
+       会画出一圈焦点框像「已选中」。让焦点落在标题上，读屏仍能播报弹窗标题。 -->
+  <h2 id="proto-sheet-title" tabindex="-1" autofocus>服务协议与隐私条款</h2>
+  <p class="protosheet-intro">为使用本服务，请阅读并同意以下条款。</p>
+  <div class="rowlist">
+    <a class="row proto__link" href="#" data-proto="服务协议">
+      <span class="proto__name">服务协议</span>
+      <svg class="proto__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+        <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+    </a>
+    <a class="row proto__link" href="#" data-proto="隐私条款">
+      <span class="proto__name">隐私条款</span>
+      <svg class="proto__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+        <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+    </a>
+  </div>
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="proto-cancel">取消</button>
+    <button class="btn btn--primary" type="button" id="proto-ok">同意</button>
+  </div>
 </dialog>
 
 <dialog class="sheet" id="avatar-sheet" aria-labelledby="avatar-sheet-title">
@@ -1150,15 +1296,55 @@ dialog.modal.authq {
      非微信：等用户点「立即对话」走确认窗。 */
   if (isWx) document.documentElement.classList.add('is-wx');
 
+  /* 协议确认：页面加载后即弹（两条路径都先过协议），同意才继续。
+     同意之前不写 skl.user、不加 .js-granted，所以「取消」天然回到未授权。 */
+  var protoSheet = document.getElementById('proto-sheet');
+
+  /* toast 是 body 上的普通元素，永远在 :modal 的 top layer 之下。
+     弹层开着时把它挪进弹层，两者同处 top layer 才看得见；关闭时挪回 body。
+     定位是 fixed、锚视口，dialog 无 transform，所以挪进挪出位置不变。 */
+  var toastHome = document.querySelector('.toast');
+
+  function openProtoSheet() {
+    if (toastHome && toastHome.parentNode !== protoSheet) protoSheet.appendChild(toastHome);
+    if (typeof protoSheet.showModal === 'function') protoSheet.showModal();
+    else protoSheet.setAttribute('open', '');
+  }
+  function closeProtoSheet() {
+    if (typeof protoSheet.close === 'function') protoSheet.close();
+    else protoSheet.removeAttribute('open');
+    if (toastHome && toastHome.parentNode !== document.body) document.body.appendChild(toastHome);
+  }
+
   function grant() {
-    Auth.boot();               /* 已授权则 no-op */
-    document.documentElement.classList.add('js-granted');
     /* 播报挪到下一帧：此刻 showModal 的弹层还开着，若同步 startSpeak()，
        两个 .dock 在同一个渲染帧里一显一隐，会闪一下。
-       等一帧让弹层先关、布局落定，再交换（closeAuthSheet 在 grant() 之后才调）。
+       等一帧让弹层先关、布局落定，再交换（closeProtoSheet 在 grant() 之后才调）。
        微信路径加载时无手势，走 speakGreetingWx（含首次点击补播）。 */
+    Auth.boot();               /* 已授权则 no-op */
+    document.documentElement.classList.add('js-granted');
     setTimeout(isWx ? speakGreetingWx : speakGreeting, 0);
   }
+
+  /* 同意：微信端直接进授权态（它本来加载即授权）；
+     非微信端只关弹窗，仍要走「立即对话 → 扫码」那一步。 */
+  document.getElementById('proto-ok').addEventListener('click', function () {
+    closeProtoSheet();
+    if (isWx) grant();
+  });
+  /* 取消 / Esc / 点遮罩一律回未授权：登录态根本没写，只需确保未授权外观。 */
+  function denyGrant() {
+    closeProtoSheet();
+    try { localStorage.removeItem('skl.user'); } catch (err) { /* 无痕模式等 */ }
+  }
+  document.getElementById('proto-cancel').addEventListener('click', denyGrant);
+  protoSheet.addEventListener('cancel', denyGrant);   /* Esc 不经过按钮 */
+  document.querySelectorAll('.proto__link').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      toast(a.getAttribute('data-proto') + '链接待接入');
+    });
+  });
 
   /* 授权成功后自动播报问候语。
      走浏览器内置的 speechSynthesis —— 演示站无后端，这是唯一不引依赖的出声路。
@@ -1510,19 +1696,17 @@ dialog.modal.authq {
      代价是桌面微信也会按微信端处理（它没有公众号授权能力），
      这个单一规则更好预期，也符合「微信浏览器里就该走微信那套」。 */
 
-  /* 刷新后恢复登录态：auth.js 把登录结果写在 localStorage['skl.user']，
-     之前只写不读，导致每次刷新都要重新扫码。这里读回来，直接进授权态。
-     **不重播欢迎语** —— 用户是刷新页面，不是刚登录；再来一遍会被当成噪音。
-     微信端没有「未登录」态，照旧走 grant()（含自动播报）。 */
-  function hasStoredLogin() {
-    try { return !!localStorage.getItem('skl.user'); } catch (err) { return false; }
-  }
+  /* 演示用：每次刷新都清掉登录态。
+     不清的话，点过一次扫码后 skl.user 就永久留在本地，之后每次打开都直接进
+     授权态、「立即对话」被藏起，扫码授权这一段再也没法复现。
+     真实接入微信授权后删掉这一行，恢复「刷新保持登录」。
+     必须在下方 isWx/grant 之前清：微信端 grant() 会把它写回来。 */
+  try { localStorage.removeItem('skl.user'); } catch (err) { /* 无痕模式等，忽略 */ }
 
-  if (isWx) grant();
-  else if (hasStoredLogin()) {
-    /* 只切底部动作区；欢迎语本来就是静态 HTML，不用还原。 */
-    document.documentElement.classList.add('js-granted');
-  }
+  /* 协议在页面加载后就弹，两条路径都先过协议。
+     同意后：微信端直接 grant（它本就加载即授权）；非微信端只关窗，
+     仍要走「立即对话 → 扫码」那一步。 */
+  openProtoSheet();
 
   /* 授权确认弹窗。老内核（部分微信 X5）无 showModal，
      只写 if 的话点了没反应 —— 同转写弹窗的兜底写法。 */
@@ -1542,7 +1726,7 @@ dialog.modal.authq {
 
   if (!isWx) {
     document.getElementById('btn-start').addEventListener('click', openAuthSheet);
-    /* 点占位二维码 = 演示「扫上了」→ 授权成功。没有别的按钮。 */
+    /* 点占位二维码 = 演示「扫上了」→ 授权。协议已在页面加载时确认过。 */
     document.querySelector('.authq__qr').addEventListener('click', function () {
       grant();
       closeAuthSheet();
