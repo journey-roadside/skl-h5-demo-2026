@@ -11,11 +11,16 @@
 
 ```
 index.html                      首页 · Companion-Hero（数字人入口页）
-auth.js                         环境判定 + 微信授权占位（Auth.isWeChat / Auth.boot）
 404.html                        页面不存在（独立状态页）
 500.html                        服务暂时不可用（独立状态页）
 dev-server.py                   本地演示服务器（默认 8791）
 README.md                       本文件
+js/                             页面脚本
+  auth.js                         环境判定 + 微信授权占位（Auth.isWeChat / Auth.boot）
+  settings.js                     外观模式 / 自动播报偏好（Settings.*）
+assets/                         页面级资源
+  theme.css                       强制浅色 / 深色的令牌覆盖层（跟随设置页选择）
+  demo-qr.png                     演示用二维码
 h5v2/                           设计体系 v2「靖紫」，自包含副本
   tokens.css                      令牌唯一真源
   base.css                        基础层 + 组件层
@@ -23,6 +28,9 @@ h5v2/                           设计体系 v2「靖紫」，自包含副本
   index.html                      规范预览页
   assets/avatars/                 数字人形象占位素材
 ```
+
+`h5v2/tokens.css` 与 `base.css` **不挪进 `assets/`**：它们必须与父仓库
+`05-Design/design-system/h5v2/` 的目录结构逐字对应，同步时才能直接比对。
 
 `404.html` / `500.html` 按 DESIGN.md §4.4 状态页骨架写：居中单点、一个明确动作。
 两者差别在「有没有重试价值」—— 404 重试无用，所以只给出口；
@@ -40,10 +48,10 @@ h5v2/                           设计体系 v2「靖紫」，自包含副本
 原本都跳对话页。对话页移出后这三个入口**保留外观、链接摘掉，点击不跳转**；
 对话页接回来时，恢复各自的 `href` 与发送处理即可。
 
-`auth.js` 只留环境判定与微信授权占位（`Auth.isWeChat()` / `Auth.boot()`）——
+`js/auth.js` 只留环境判定与微信授权占位（`Auth.isWeChat()` / `Auth.boot()`）——
 首页据此切底部动作区，并在微信内往 `localStorage['skl.user']` 写 `{wx:true}`。
 原来的手机号登录层随账户体系一起移出了，接回来时从 git `38e5b67` 取回旧版
-`auth.js`。接真实微信授权时替换 `wxAuthorize` 函数体。
+`js/auth.js`。接真实微信授权时替换 `wxAuthorize` 函数体。
 
 ## 本地预览
 

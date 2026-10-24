@@ -1097,11 +1097,16 @@ html {
   if (Auth.isWeChat()) Auth.boot();
 
   /* 顶栏头像：未登录时是登录入口，已登录时进账户页。
-     href 恒为账户页，登录后再点自然过去，不会又弹一次登录层。 */
+     href 恒为账户页，登录后再点自然过去，不会又弹一次登录层。
+
+     判据必须与 account.html 的门槛一致（非微信端要求 user.phone）。
+     只用 isLoggedIn 的话，"有 key 但没手机号"的登录态会被放行，
+     到账户页又被 replace 回首页 —— 表现就是「点了一下回到首页」。 */
   document.getElementById('btn-account').addEventListener('click', function (e) {
-    if (Auth.isLoggedIn()) return;      /* 放行 href */
+    var user = Auth.get();
+    if (user && (Auth.isWeChat() || user.phone)) return;   /* 放行 href */
     e.preventDefault();
-    Auth.open(function (user) { if (user) location.href = './account.html?from=chat'; });
+    Auth.open(function (u) { if (u) location.href = './account.html?from=chat'; });
   });
 
   /* ---- 顶栏两个动作：新建对话 / 历史 ----

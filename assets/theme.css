@@ -1,0 +1,112 @@
+/* ==========================================================================
+   外观模式覆盖层 —— 供设置页的「浅色 / 深色」强制切换使用
+   ==========================================================================
+   tokens.css 是设计体系真源，不改它。这里在它之后加载，用
+   html[data-theme="dark"] / html[data-theme="light"] 的选择器特异性
+   （0,1,1）压过 tokens 里的 `@media (...) { :root {...} }`（0,1,0）。
+
+   · 不写 data-theme（或写 "auto"）：什么都不做，跟随系统（tokens 原行为）。
+   · data-theme="light"：强制浅色，即使系统是深色。
+   · data-theme="dark" ：强制深色，即使系统是浅色。
+
+   数值全部照抄 tokens.css 的深色块，不新增颜色 —— 两边必须逐字一致，
+   否则强制切换与跟随系统会出现色差。
+   ========================================================================== */
+
+html[data-theme="light"] {
+  --mist-1:      #FBFAFE;
+  --mist-2:      #F5F4FD;
+  --mist-3:      #EDEBFD;
+  --mist-4:      #E4E2F5;
+  --mist-5:      #D6D3EC;
+
+  --surface:     #FFFFFF;
+  --canvas:      var(--mist-2);
+
+  --ink:         #1E1B33;
+  --ink-2:       #4A4666;
+  --ink-3:       #6A668F;
+  --ink-on-dark: #ECEBF5;
+
+  --line:        var(--mist-4);
+  --line-strong: var(--mist-5);
+  --overlay:     rgba(30, 27, 51, 0.45);
+
+  --brand:       #5B54E8;
+  --brand-deep:  #443DD6;
+  --brand-soft:  #EDEBFD;
+  --on-brand:    #FFFFFF;
+  --focus:       #3F37D6;
+
+  --info:        #2C63C7;  --info-soft:   #EAF0FB;
+  --ok:          #2F8F63;  --ok-soft:     #E8F5EE;
+  --warn:        #B5761F;  --warn-soft:   #FBF1E0;
+  --danger:      #D93A34;  --danger-soft: #FCECEB;
+
+  --grad-hero:   linear-gradient(180deg, #E7E4FB 0%, #F5F4FD 62%, #F5F4FD 100%);
+  --grad-brand:  linear-gradient(150deg, #8B7CF6 0%, #4F46E5 100%);
+  --grad-wave:   linear-gradient(180deg, #8B7CF6 0%, #4F46E5 100%);
+  --grad-aura:   radial-gradient(58% 46% at 50% 40%,
+                   rgba(139, 124, 246, 0.34) 0%, rgba(139, 124, 246, 0) 72%);
+
+  --w-body:   400;
+  --sh-card:  0 4px 20px rgba(91, 84, 232, 0.10);
+  --sh-raise: 0 8px 28px rgba(91, 84, 232, 0.16);
+  --sh-btn:   0 2px 10px rgba(91, 84, 232, 0.14);
+  --sh-sheet: 0 -8px 32px rgba(30, 27, 51, 0.16);
+  --sh-brand: 0 6px 20px rgba(91, 84, 232, 0.32);
+}
+
+/* base.css 里还有两条「深色专属」的视觉微调（形象提亮 + 柔光收一档），
+   它们写在 @media 里，强制切换时不会跟着走。这里补上对应的 data-theme 版本，
+   并给强制浅色一条复位（系统是深色时，那两条仍会命中）。 */
+html[data-theme="dark"] .figure__img { filter: brightness(1.06) contrast(1.04); }
+html[data-theme="dark"] .figure--dock .figure__img { filter: none; }
+html[data-theme="dark"] .figure::before { opacity: .8; }
+
+html[data-theme="light"] .figure__img { filter: none; }
+html[data-theme="light"] .figure::before { opacity: 1; }
+
+html[data-theme="dark"] {
+  --mist-1:      #1A1926;
+  --mist-2:      #14131F;
+  --mist-3:      #2A2743;
+  --mist-4:      #2E2C40;
+  --mist-5:      #3D3A55;
+
+  --surface:     #1E1C2E;
+  --canvas:      #14131F;
+
+  --ink:         #ECEBF5;
+  --ink-2:       #B9B6CE;
+  --ink-3:       #8C89A6;
+  --ink-on-dark: #ECEBF5;
+
+  --line:        var(--mist-4);
+  --line-strong: #3D3A55;
+  --overlay:     rgba(8, 7, 14, 0.62);
+
+  --brand:       #8B84F2;
+  --brand-deep:  #7A72EC;
+  --brand-soft:  var(--mist-3);
+  --on-brand:    #14131F;
+  --focus:       #A79CFA;
+
+  --info:        #7FA8EE;  --info-soft:   #1E2A44;
+  --ok:          #5FBF92;  --ok-soft:     #1B2E25;
+  --warn:        #DDA84F;  --warn-soft:   #33291A;
+  --danger:      #F0736D;  --danger-soft: #34201F;
+
+  --grad-hero:   linear-gradient(180deg, #241F3D 0%, #14131F 62%, #14131F 100%);
+  --grad-brand:  linear-gradient(150deg, #A79CFA 0%, #6F66EC 100%);
+  --grad-wave:   linear-gradient(180deg, #A79CFA 0%, #6F66EC 100%);
+  --grad-aura:   radial-gradient(58% 46% at 50% 40%,
+                   rgba(139, 132, 242, 0.26) 0%, rgba(139, 132, 242, 0) 72%);
+
+  --w-body:   350;
+  --sh-card:  0 4px 20px rgba(0, 0, 0, 0.34);
+  --sh-raise: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --sh-btn:   0 2px 10px rgba(0, 0, 0, 0.34);
+  --sh-sheet: 0 -8px 32px rgba(0, 0, 0, 0.50);
+  --sh-brand: 0 6px 20px rgba(111, 102, 236, 0.40);
+}

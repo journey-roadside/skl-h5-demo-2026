@@ -6,6 +6,9 @@
 <title>数字人对话 | 湖北社科数据信息联盟</title>
 <link rel="stylesheet" href="./h5v2/tokens.css">
 <link rel="stylesheet" href="./h5v2/base.css">
+<link rel="stylesheet" href="./assets/theme.css">
+<script src="./js/settings.js"></script>
+<script>Settings.applyTheme();</script>
 <style>
 /* ==========================================================================
    首页 · Companion-Hero —— 见 h5v2/DESIGN.md §4.1
@@ -46,27 +49,69 @@ body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  padding-top: var(--sp-md);
+  /* 顶部间距交给 .toprow 自己给（--sp-sm，与对话页顶栏一致）。
+     原来这里写 --sp-md(16px)，比对话页的 12px 多 4px，
+     两页互切时顶栏按钮会上下跳。 */
   /* 内容超出视口时整页滚动（§9「页面必须能滚」），不做固定高度 */
 }
 
-/* 顶部工具行：切换形象。这里不重绘微信导航栏，只是一个页内动作。 */
+/* 顶部工具行：切换模式（左）+ 切换形象（右）。不重绘微信导航栏，都是页内动作。
+
+   宽度对齐对话页顶栏（.docpage__bar 走 --w-docpage 1000px），
+   这样两页互切时按钮不会左右跳。正文内容仍留在 640px 的内容栏里 ——
+   本页只有这一行越出内容栏，用负 margin 对称补偿。
+   窄屏时 min() 退化成视口宽减左右内边距，与对话页顶栏一致，
+   所以这个式子两端都对得上，不需要额外的媒体查询。 */
 .toprow {
+  /* 内边距也照抄 .docpage__bar（--pad-start / --pad-end），
+     否则两页按钮离屏幕边的距离不一样，切页时仍会看到横向位移。
+
+     宽度用 100vw 而不是「父内容宽 + padding」：本元素已经是 .home__main
+     的子项，父级的 padding-inline 已把它缩进过一次，再在同一条式子里扣
+     一次会双重缩进（窄屏实测比对话页多缩 16px）。
+     margin-inline 里的 50% 是相对父内容宽，减去自身半宽即回到视口居中。 */
+  --toprow-w: min(var(--w-docpage), 100vw);
+  box-sizing: border-box;
+  width: var(--toprow-w);
+  margin-inline: calc(50% - var(--toprow-w) / 2);
+  /* 顶部间距 = 对话页顶栏的 --sp-sm(12px)，两页互切时按钮不上下跳。
+     .home__main 已不再提供 padding-top，这里给的就是唯一一份。 */
+  padding-block: var(--sp-sm);
+  padding-inline: var(--pad-start) var(--pad-end);
   display: flex;
-  /* 两端对齐：AI 标识贴左、切换形象贴右。只有胶囊时有它自己在右端。 */
   justify-content: space-between;
   align-items: center;
   gap: var(--sp-sm);
 }
-/* 这行 AI 标识挤在页头，不该再用 base.css 那份 12px 上下 padding：
-   那套是为「独立成行、居中陈列」写的，放在 toprow 里会把行高撑到 46px，
-   比胶囊(36px)还高、整行重心被拉下去。这里压成纯文字行。 */
-.toprow .aiflag {
-  padding: 0;
-  text-align: left;
+/* 右侧两颗（切换形象 + 设置）成组，space-between 只在「模式钮」与这组之间分配，
+   所以模式钮靠最左、这组靠最右，中间的按钮不会跑到正中。 */
+.toprow__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+
+/* AI 标识改到欢迎字幕下方。base.css 的 .aiflag 自带 12px 上下 padding 与居中，
+   这里只补两点：不要在字幕区定高里额外撑高（用绝对定位/负 margin 都会影响
+   数字人位置），所以直接并用 margin 收掉上内边距，靠 .home__greet 的
+   overflow 让它在字幕区外自然溢出显示。 */
+.home__aiflag {
+  /* 与上方欢迎字幕拉开间距：base 自带 12px 上 padding，这里再叠 8px，
+     合计 20px（原来用负 margin 抵成 0，标识贴着副标题太近）。 */
+  margin-top: var(--sp-xs);
+  padding-bottom: 0;                     /* 下方留白交给下一行 */
   font-size: var(--text-xs);
   color: var(--ink-3);
 }
+/* 播报/回复/加载态不显示：那时字幕区是播报窗口，标识混在里面会被误读成内容。
+   **必须是 display:none 而不是 visibility:hidden** —— 后者仍占位，
+   34px 的标识会把 #answer 往下推，110px 的字幕区就只装得下两行了（实测裁掉第三行）。
+   录音态（.is-rec）用 visibility：字幕整块本来就隐藏，让不让位都看不出来，
+   且录音行要靠这块占位定位，不能塌。 */
+.js-speaking .home__aiflag,
+.js-answering .home__aiflag,
+.js-answered .home__aiflag { display: none; }
+.is-rec .home__aiflag { visibility: hidden; }
 
 /* 切换形象：窄屏是纯图标圆钮，≥375 恢复成「图标 + 文字」胶囊。
    窄屏省横向空间（页头这行还挤着 AI 标识），宽屏文案回来、指示更明确。
@@ -86,9 +131,10 @@ body {
 .pill--icon svg { width: 18px; height: 18px; }
 .pill__label { display: none; }
 
-/* ≥375：文字回来、形状回到基类的胶囊。只覆盖圆钮那几条，其余仍走 .pill。
-   375 取自竖屏主流宽度（iPhone 全系）——320/360 仍留圆钮，避免页头挤成一团。 */
-@media (min-width: 375px) {
+/* ≥768：文字回来、形状回到基类的胶囊。只覆盖圆钮那几条，其余仍走 .pill。
+   小于 768 一律纯图标圆钮 —— 手机上页头横向紧张，标题/内容优先，
+   按钮退回图标形态省出宽度。 */
+@media (min-width: 768px) {
   .pill--icon {
     width: auto;
     min-width: auto;
@@ -97,10 +143,41 @@ body {
     justify-content: flex-start;
     aspect-ratio: auto;
   }
-  /* 图标回到基类口径：胶囊里 18px 会盖过文字、抢视觉重心 */
-  .pill--icon svg { width: 14px; height: 14px; }
+  /* 图标保持 18px：胶囊里文字是 13px，14px 图标会显得比字还小、按钮失衡。
+     （原先写 14px 是怕图标压过文字，但那只在文字 16px 时才成立。） */
   .pill__label { display: inline; }
 }
+
+/* 始终圆钮、不显示文字（切换对话模式钮）。叠在 .pill--icon 之后，
+   特异性同为 (0,1,0) 但源序更晚，所以能盖住上面 ≥375 的胶囊化规则。 */
+.pill--round,
+.pill--round .pill__label { display: none; }
+.pill--round {
+  display: inline-flex;
+  width: var(--h-pill);
+  min-width: var(--h-pill);
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-pill);
+}
+.pill--round svg { width: 18px; height: 18px; }
+
+/* 设置钮是 <a>：base.css 给所有 a:hover 加了 underline，圆钮里不合体。
+   与另两页顶栏同口径。 */
+.pill--round,
+.pill--round:hover { text-decoration: none; }
+
+/* 深色模式：顶栏两钮的图标与文字改用主色。
+   浅色下走 --ink-2 中性灰（不抢内容），深色底上灰色发闷、边界不清，
+   换 --brand(#8B84F2) 才立得住；三页同一口径。 */
+/* html:not([data-theme="light"]) 让设置页的「强制浅色」同时压住这条媒体查询；
+   下面那条 html[data-theme="dark"] 负责「强制深色 + 系统浅色」。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .toprow .pill { color: var(--brand); }
+}
+html[data-theme="dark"] .toprow .pill { color: var(--brand); }
 
 /* 主体内容在「胶囊以下、按钮以上」的剩余空间里垂直居中。
    用前后两个弹性占位实现，而不是 justify-content: center ——
@@ -158,6 +235,14 @@ body {
 .home__greet {
   box-sizing: border-box;   /* 高度含 padding */
   height: var(--greet-h);
+  /* 欢迎态允许下方内容溢出：AI 标识挂在字幕之后，定高 110 装不下它，
+     溢出显示才落在「字幕下方」而不是被裁掉。它不参与布局高度，
+     所以数字人位置不受影响。
+     播报/回复态改回 hidden —— 那是三行窗口，要裁掉滑出上缘的旧句。 */
+  overflow: visible;
+}
+.js-answering .home__greet,
+.js-answered .home__greet {
   overflow: hidden;
 }
 
@@ -203,11 +288,10 @@ body {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   position: relative;   /* 退场的旧轨道按它定位，否则会跑到 #greet-box 顶上 */
-  /* 长回复在本区内滚。底部渐隐遮罩（#greet-box::after，高 1.1em）贴盒子底边，
-     滚动到底时最后一行会被盖住。留一段略高于遮罩的底部内边距，让它能滚出遮罩。
-     1.3em 而非 1.1em：等于遮罩高时两者边界重合，取整后仍差 1px。
-     副作用：内容不超高时也会多 1.3em 空白，但那时 scrollTop 恒为 0、看不见。 */
-  padding-bottom: 1.3em;
+  /* 底部内边距只在横屏给（见文件末尾的媒体查询）。
+     竖屏 110px 的字幕区本来就紧：三行 112px 已经超了 2px，
+     再扣掉 1.3em(21px) 就只能看见一行半 —— 实测第二行被切、第三行不见。
+     横屏右栏有 188~258px，那 21px 换「滚到底不被遮罩压字」是划算的。 */
 }
 .js-answered .answer::-webkit-scrollbar { display: none; }
 .js-answered .answer .greet__line {
@@ -226,7 +310,10 @@ body {
   content: '';
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  height: 1.1em;
+  /* 0.7em 而非 1.1em：竖屏 110px 装三行刚好用满，
+     1.1em 的遮罩会把第三行整行吃掉（实测只剩一半）。遮罩只是「还有更多」的暗示，
+     收窄后既有渐隐感，又不挡字。 */
+  height: 0.7em;
   background: linear-gradient(to bottom, rgba(255,255,255,0), var(--canvas));
   pointer-events: none;
 }
@@ -321,17 +408,18 @@ body {
    数字人会跳（同 .listening 的处理口径）。 */
 .is-rec .home__greet { visibility: hidden; }
 /* 波形放大：base.css 的 .wave 是 22px 高、条 3px 宽，首页这个位是画面焦点、
-   显得太小。整体 ×1.8：条宽 5px、高度与各条比例同步放大。
+   显得太小。整体 ×1.45（原 ×1.8 偏大，压住了下方问候语）：
+   条宽 4px、高度与各条按同一比例缩。
    各条高度必须逐条覆写 —— base.css 用了 nth-child 定死 8/14/20/12/17/9/13px。 */
-#hero-wave { height: 40px; gap: 5px; }
-#hero-wave i { width: 5px; }
-#hero-wave i:nth-child(1) { height: 14px; }
-#hero-wave i:nth-child(2) { height: 25px; }
-#hero-wave i:nth-child(3) { height: 36px; }
-#hero-wave i:nth-child(4) { height: 22px; }
-#hero-wave i:nth-child(5) { height: 31px; }
-#hero-wave i:nth-child(6) { height: 16px; }
-#hero-wave i:nth-child(7) { height: 23px; }
+#hero-wave { height: 32px; gap: 4px; }
+#hero-wave i { width: 4px; }
+#hero-wave i:nth-child(1) { height: 11px; }
+#hero-wave i:nth-child(2) { height: 20px; }
+#hero-wave i:nth-child(3) { height: 29px; }
+#hero-wave i:nth-child(4) { height: 18px; }
+#hero-wave i:nth-child(5) { height: 25px; }
+#hero-wave i:nth-child(6) { height: 13px; }
+#hero-wave i:nth-child(7) { height: 18px; }
 
 /* 底部圆形操作区：浮动固定在视口底部，内容从下方穿过。
    用 fixed 而非 sticky —— sticky 要有个滚动祖先才粘得住，
@@ -381,6 +469,19 @@ body {
   flex: 0 0 auto;
 }
 
+/* 底部四个动作钮（录音 / 键盘 / 重播 / 播报停止）统一到 --h-input(48px)，
+   与输入条的取消钮同大。原来走 .iconbtn 基类的 clamp(46px,15vw,60px)，
+   在手机上会到 59~60px，比取消钮大一圈；同一位置换态时尺寸跳变。
+   热区仍是 48 ≥ --h-control(44)，不损失可点性。 */
+#btn-mic,
+#btn-keyboard,
+#btn-replay,
+#btn-speaking {
+  width: var(--h-input);
+  height: var(--h-input);
+  min-height: var(--h-input);
+}
+
 /* 提示文字调浅。
    注意 placeholder 并不继承 .composer__field 的 --ink-3 ——
    base.css 给 input 本身写了 color: var(--ink)，浏览器再据此派生 placeholder，
@@ -403,9 +504,12 @@ body {
 }
 /* 深色下阴影要更黑更实 —— 半透明深紫压在深底上等于没有 */
 @media (prefers-color-scheme: dark) {
-  .iconbtn.composer__send:not([data-send]) {
+  html:not([data-theme="light"]) .iconbtn.composer__send:not([data-send]) {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
   }
+}
+html[data-theme="dark"] .iconbtn.composer__send:not([data-send]) {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 /* ==========================================================================
@@ -476,6 +580,9 @@ dialog.modal.authq {
 .authq__qr img { width: 100%; height: 100%; display: block; }
 /* button 重置后文字仍按继承对齐：弹窗 .modal 标题默认左对齐，这里居中 */
 .authq h2 { text-align: center; }
+/* 标题只是接初始焦点的落点（见 DOM 注释），不该画出焦点框。 */
+.authq h2:focus,
+.authq h2:focus-visible { outline: none; }
 
 /* ---- 协议确认弹窗 ---- */
 #proto-sheet { width: 300px; max-width: calc(100% - var(--sp-xl) * 2); }
@@ -485,7 +592,7 @@ dialog.modal.authq {
 #proto-sheet h2:focus-visible { outline: none; }
 .protosheet-intro {
   margin-top: var(--sp-xs);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--ink-3);
   text-align: center;
 }
@@ -499,7 +606,7 @@ dialog.modal.authq {
 #proto-sheet .proto__link,
 #proto-sheet .proto__link:hover { text-decoration: none; }
 
-/* 矮横屏（568×320 实测）：弹窗 335px 高装不下，按钮被切在底部。
+/* 矮横屏（568×320 实测）：弹窗高度紧张，按钮会被切在底部。
    收紧纵向：隐藏说明句、行与按钮间距各降一级、弹窗内边距减半。 */
 @media (max-height: 399.98px) {
   #proto-sheet { padding-top: var(--sp-md); padding-bottom: var(--sp-md); }
@@ -696,8 +803,11 @@ dialog.modal.authq {
     /* **必须显式定高**。body 只有 min-height:100dvh、高度 auto，
        .home__main 又是 flex:1 1 auto —— 内容多高 body 就多高，flex 的收缩
        从来不会触发，于是 stage 会按形象 1:1 撑到列宽那么多，整页往下滚。
-       定高后形象改由可用高度决定，与竖屏那套「定高换位置稳定」同理。 */
-    height: calc(100dvh - var(--sp-md) - 36px - var(--h-dock) - var(--pad-bottom));
+       定高后形象改由可用高度决定，与竖屏那套「定高换位置稳定」同理。
+
+       顶行按 **60px** 算（--h-pill 36 + 上下 padding --sp-sm 各 12）：
+       .toprow 现在自带 padding-block，不再是 36。 */
+    height: calc(100dvh - 60px - var(--h-dock) - var(--pad-bottom));
     min-height: 0;
   }
   /* 纵向堆叠时用一对弹性占位伪元素做垂直居中。改成 grid 后它们会变成
@@ -715,7 +825,12 @@ dialog.modal.authq {
     align-self: stretch;
   }
   .home__greet {
-    grid-area: greet;
+    /* 欢迎态铺满右栏两行（greet + listen），文字在其中垂直居中。
+       只占 greet 一行的话，即使 justify-content:center 也只能在
+       「上半行」里居中 —— 实测文字块中心比右栏中心偏上 47~92px。
+       播报/回复/加载三态在后面各自改回单行或贴底（见文件后段）。 */
+    grid-row: 1 / -1;
+    grid-column: 2;
     /* **必须定高，不能用 auto**。竖屏定高是为了「数字人不动」（见 --greet-h 注释）；
        横屏分栏同样需要 —— 播报换句时轨道行数/字重变化会让盒子长高，
        配合 align-self:end 就会顶着底边往上长，字幕看起来逐渐上移。
@@ -725,11 +840,17 @@ dialog.modal.authq {
     padding-top: 0;
     text-align: left;
     overflow: hidden;   /* 与竖屏同口径：超出部分由 #answer 内部滚 */
-    /* 内容贴行底。定高后盒子撑满整行，若不指定对齐，短内容会堆在行顶、
-       下方空一片；贴底才与改前「align-self:end + 高度 auto」的观感一致。 */
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
+    justify-content: center;
+  }
+  /* AI 标识在横屏下与欢迎语同一左沿。
+     base.css 的 .aiflag 自带 text-align:center 与 16px 左右内边距；
+     竖屏居中所以没动，横屏改左对齐后必须一起收掉 ——
+     否则文字被内边距推右 16px，看起来比标题缩进一截。 */
+  .home__aiflag {
+    text-align: left;
+    padding-inline: 0;
   }
   /* 收音行在右栏下方。它原本靠负 top 上移到字幕盒中央，
      分栏后不再需要那套校正 —— 归零，回到自身所在的格子里。 */
@@ -769,6 +890,12 @@ dialog.modal.authq {
     justify-content: center;
     padding-bottom: var(--sp-md);
   }
+  /* 横屏才给回复区加底部内边距：右栏 188~258px 有余量，
+     这 1.3em 让滚到底时最后一行不被渐隐遮罩压住。
+     竖屏不给 —— 110px 装三行本来就紧，再扣 21px 会切掉内容。 */
+  .js-answered .answer {
+    padding-bottom: 1.3em;
+  }
   /* 等待回复的三点泡泡居中于「回复信息区域」（右栏整个区域，含收音行）。
      #greet-box 只占上半行，在其中居中会偏上；这里让 greet 铺满右栏两行，
      再把唯一的可见子项（泡泡）双向居中。
@@ -796,8 +923,10 @@ dialog.modal.authq {
   }
   .greet__hi { font-size: var(--text-md); }
   /* 右栏只有 254~290px，副标题按基类字号会折两行、把问候区顶高。
-     缩一档让它保持一行（横屏左右分栏本来就窄）。 */
-  .greet__sub { font-size: var(--text-sm); }
+     缩一档让它保持一行（横屏左右分栏本来就窄）。
+     tokens 没有 --text-sm，只能用 --text-xs(13)——原先写的 --text-sm 是
+     未定义变量，整条声明失效，等于没缩。 */
+  .greet__sub { font-size: var(--text-xs); }
   /* 「立即对话」在极矮横屏下横跨感过强。收窄 —— 横屏可用宽度本就紧张，字号缩一档。 */
   .dock-cta {
     padding: 0 var(--sp-lg);
@@ -909,9 +1038,26 @@ dialog.modal.authq {
   }
 }
 
-/* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写。
+/* 反馈条走顶部 —— 已收进 base.css 的 .toast，本页不再覆写位置。
    原先这里有一份「贴底改贴顶」的页面级覆写，那是因为组件默认贴底；
-   现在组件统一走顶部，各页就不必各自纠正一遍。 */
+   现在组件统一走顶部，各页就不必各自纠正一遍。
+
+   **深色模式必须覆写**：base.css 的 .toast 用 background:var(--ink)、
+   color:var(--ink-on-dark)；深色主题里 --ink 与 --ink-on-dark 同为 #ECEBF5，
+   结果是白底白字、什么都看不见。这里把配色换成反相的一套：
+   深色下用 --surface 作底（深紫灰）、--ink 作字（近白）。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .toast {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+  }
+}
+html[data-theme="dark"] .toast {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+}
 </style>
 </head>
 <body>
@@ -920,19 +1066,41 @@ dialog.modal.authq {
   <main class="h5__main home__main home__main--hasdock">
 
     <div class="toprow">
-      <!-- AI 标识：合规要求（base.css 写明「任何对话页必现」）。
-           与「切换形象」同行、贴最左；**授权前后都常显**，不做隐藏 ——
-           base.css 那条「必现」是有意为之，藏起来就不合规了。 -->
-      <p class="aiflag">内容由 AI 生成，请注意甄别</p>
-      <!-- 窄屏纯图标圆钮，≥375 显示文字（见 .pill--icon / .pill__label）。
-           aria-label 常留着：窄屏下它是唯一可读名。 -->
-      <button class="pill pill--icon" type="button" id="change-avatar" aria-label="切换形象">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" aria-hidden="true">
-          <path d="M4 8h11M4 16h7"/><path d="M17 5l3 3-3 3M13 13l3 3-3 3"/>
+      <!-- 切换对话模式：默认数字人对话，点了去普通对话页（chat.html）。
+           带文字「对话模式」—— 与对话页那颗「数字人模式」互为镜像，
+           两边都靠文字说明去向，切页时一眼知道对面是什么。
+           气泡轮廓＝「对话」，与右上「切换形象」的箭头图标区分得开。 -->
+      <button class="pill pill--icon" type="button" id="change-mode"
+              aria-label="切换到普通对话模式">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.3A8 8 0 1 1 20 12Z"/>
+          <path d="M9 11h6M9 14.5h4"/>
         </svg>
-        <span class="pill__label" aria-hidden="true">切换形象</span>
+        <span class="pill__label" aria-hidden="true">对话模式</span>
       </button>
+      <div class="toprow__right">
+        <!-- 纯图标圆钮（不显示文字）。aria-label 是它唯一可读名。
+             图标是两个人物轮廓（前一人 + 后一人的侧影），表「多个形象可挑」；
+             原先的横线加箭头读起来更像「排序 / 更多」，不是换人。 -->
+        <button class="pill pill--icon pill--round" type="button" id="change-avatar"
+                aria-label="切换形象">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="7.5" r="3.6"/>
+            <path d="M2.6 20.4a6.4 6.4 0 0 1 12.8 0"/>
+            <path d="M16.8 3.9a3.6 3.6 0 0 1 0 7.2"/>
+            <path d="M18.4 14.4a5.4 5.4 0 0 1 3.2 4.9"/>
+          </svg>
+        </button>
+        <!-- 设置入口：竖排三点，纯图标圆钮，与「切换形象」同款同尺寸。 -->
+        <a class="pill pill--icon pill--round" id="btn-setting"
+           href="./setting.html?from=index" aria-label="设置">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/>
+          </svg>
+        </a>
+      </div>
     </div>
 
     <div class="home__stage">
@@ -957,6 +1125,11 @@ dialog.modal.authq {
       <div class="greet home__greet" id="greet-box">
         <h1 class="greet__hi" id="greet-hi">你好，今天想聊点什么？</h1>
         <p class="greet__sub" id="greet-sub">智库报告 / 学术论文 / 政策解读，都可以问我！</p>
+
+        <!-- AI 标识：合规要求（base.css 写明「任何对话页必现」）。
+             放在欢迎字幕下方；非播报态显示，播报与收录音时由 CSS 隐藏，
+             且不进入播报文本（TTS 只读 #greet-hi / #greet-sub，见 speakGreeting）。 -->
+        <p class="aiflag home__aiflag">内容由 AI 生成，请注意甄别</p>
 
         <!-- 提交提问后的两个后置态（都用 .is-answering 切，见脚本）：
              1) 加载：体系现成的三点跳动气泡，左下角圆角（.bubble--ai）
@@ -1069,7 +1242,10 @@ dialog.modal.authq {
      二维码用 assets/demo-qr.png 占位，不指向任何真实链接。
      点码 = 演示「扫上了」→ 授权成功；Esc 关掉按「未授权」处理（见脚本）。 -->
 <dialog class="modal authq" id="auth-sheet" aria-labelledby="auth-sheet-title">
-  <h2 id="auth-sheet-title">微信扫码登录</h2>
+  <!-- tabindex=-1 + autofocus：showModal 默认把焦点给第一个可聚焦元素（那颗二维码
+       按钮），会画出一圈焦点框，看着像「二维码已被选中」。让焦点落在标题上，
+       读屏仍能播报弹窗标题。 -->
+  <h2 id="auth-sheet-title" tabindex="-1" autofocus>微信扫码登录</h2>
   <button class="authq__qr" type="button" aria-label="演示：已扫码，点击登录">
     <img src="./assets/demo-qr.png" alt="" width="320" height="320" loading="lazy" decoding="async">
   </button>
@@ -1082,7 +1258,7 @@ dialog.modal.authq {
   <!-- tabindex=-1 + autofocus：showModal 默认聚焦第一个可聚焦元素（那条协议链接），
        会画出一圈焦点框像「已选中」。让焦点落在标题上，读屏仍能播报弹窗标题。 -->
   <h2 id="proto-sheet-title" tabindex="-1" autofocus>服务协议与隐私条款</h2>
-  <p class="protosheet-intro">为使用本服务，请阅读并同意以下条款。</p>
+  <p class="protosheet-intro">请阅读并同意以下条款。</p>
   <div class="rowlist">
     <a class="row proto__link" href="#" data-proto="服务协议">
       <span class="proto__name">服务协议</span>
@@ -1136,7 +1312,7 @@ dialog.modal.authq {
 <!-- 反馈条：只在「结果不可见」时用（§7）。录音期间点了禁用钮属于此类。 -->
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="./auth.js"></script>
+<script src="./js/auth.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1219,6 +1395,15 @@ dialog.modal.authq {
     }
   });
 
+  /* 切到普通对话模式：跳 chat.html（v1.1 布局）。对话模式不受录音态影响，
+     因为它在首页还没进入录音，按钮本就可用。 */
+  document.getElementById('change-mode').addEventListener('click', function () {
+    /* 录音/播报中被 syncAvatarLock 压暗，这里再挡一手：
+       脚本仍能 .click() 进来，不加判断就会把整页跳走、中断正在播的内容。 */
+    if (isAvatarLocked()) return;
+    location.href = './chat.html';
+  });
+
   list.addEventListener('click', function (e) {
     var opt = e.target.closest('.picker__opt');
     if (!opt) return;
@@ -1259,6 +1444,7 @@ dialog.modal.authq {
   var toastEl = document.getElementById('toast');
   var keyboardBtn = document.getElementById('btn-keyboard');
   var changeAvatarBtn = document.getElementById('change-avatar');
+  var changeModeBtn = document.getElementById('change-mode');
   var replayBtn = document.getElementById('btn-replay');
 
   var state = 'idle';
@@ -1321,7 +1507,9 @@ dialog.modal.authq {
        两个 .dock 在同一个渲染帧里一显一隐，会闪一下。
        等一帧让弹层先关、布局落定，再交换（closeProtoSheet 在 grant() 之后才调）。
        微信路径加载时无手势，走 speakGreetingWx（含首次点击补播）。 */
-    Auth.boot();               /* 已授权则 no-op */
+    /* 传 true：首页的授权是用户显式动作（扫码/同意），非微信也要落登录态，
+       否则 chat/account 那边按「未登录」处理。Auth.boot 默认只在微信内生效。 */
+    Auth.boot(true);
     document.documentElement.classList.add('js-granted');
     setTimeout(isWx ? speakGreetingWx : speakGreeting, 0);
   }
@@ -1705,8 +1893,14 @@ dialog.modal.authq {
 
   /* 协议在页面加载后就弹，两条路径都先过协议。
      同意后：微信端直接 grant（它本就加载即授权）；非微信端只关窗，
-     仍要走「立即对话 → 扫码」那一步。 */
-  openProtoSheet();
+     仍要走「立即对话 → 扫码」那一步。
+
+     例外：设置页「退出登录」回跳时带 ?agreed=1 —— 用户刚在设置页操作过，
+     再拿协议窗拦一次是打断。此时不弹，但仍停在未授权外观，
+     点「立即对话」照常走授权。 */
+  var skipProto = false;
+  try { skipProto = new URLSearchParams(location.search).get('agreed') === '1'; } catch (err) { skipProto = false; }
+  if (!skipProto) openProtoSheet();
 
   /* 授权确认弹窗。老内核（部分微信 X5）无 showModal，
      只写 if 的话点了没反应 —— 同转写弹窗的兜底写法。 */
@@ -1836,23 +2030,26 @@ dialog.modal.authq {
      形象切换钮是 button，靠这里拦住。两处都给同一条提示。 */
   var BLOCKED_MSG = '正在录音';
 
-  /* 形象切换钮的禁用范围比「录音中」更宽：播报中也禁止 ——
+  /* 顶栏两钮（切换形象 / 切换模式）的禁用范围比「录音中」更宽：播报中也禁止 ——
      形象决定播报音色（形象一 = 女声 / 形象二 = 男声），念到一半换形象会让
-     声音与形象对不上。
+     声音与形象对不上；播报中切走整页更会把正在念的内容打断。
      **禁用的两种情形外观必须一致**（都是 .is-blocked 压暗），且**不弹 toast** ——
      它不像键盘/重播那样是「点错了」的操作，而是本来就不该在这时可用，
      给提示反而多话。 */
   function isAvatarLocked() {
     return isRecording() || document.documentElement.classList.contains('js-speaking');
   }
-  /* 把禁用态同步到形象钮。录音与播报两个状态都调它 ——
-     .is-blocked 由这里统一挂，不再依赖 setBlocked 那条只认录音的路径。 */
+  /* 把禁用态同步到顶栏两钮。录音与播报两个状态都调它 ——
+     .is-blocked 由这里统一挂，不再依赖 setBlocked 那条只认录音的路径。
+     两钮共用同一个判据与同一套外观，避免一个灰一个不灰。 */
   function syncAvatarLock() {
     var locked = isAvatarLocked();
-    changeAvatarBtn.classList.toggle('is-blocked', locked);
-    changeAvatarBtn.setAttribute('aria-disabled', String(locked));
-    if (locked) changeAvatarBtn.setAttribute('tabindex', '-1');
-    else changeAvatarBtn.removeAttribute('tabindex');
+    [changeAvatarBtn, changeModeBtn].forEach(function (el) {
+      el.classList.toggle('is-blocked', locked);
+      el.setAttribute('aria-disabled', String(locked));
+      if (locked) el.setAttribute('tabindex', '-1');
+      else el.removeAttribute('tabindex');
+    });
   }
 
   keyboardBtn.addEventListener('click', function (e) {

@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>设置 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<link rel="stylesheet" href="./assets/theme.css">
+<script src="./js/settings.js"></script>
+<script>Settings.applyTheme();</script>
+<style>
+/* ==========================================================================
+   设置页 —— 账号信息 / 设置项 / 协议阅读 / 退出登录
+   骨架与对话页一致（.docpage + .docpage__bar），只是内容是卡片列表。
+   类名全部走 base.css（.rowlist / .row / .btn），本文件只写页面级补充。
+   ========================================================================== */
+
+body { background: var(--grad-hero); }
+
+/* 内层滚动：列表滑动，顶栏不动（同 chat / history 的口径） */
+.docpage {
+  height: 100dvh;
+  overflow: hidden;
+}
+.docpage__flow {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding-bottom: calc(var(--sp-xl) + var(--pad-bottom));
+}
+.docpage__flow::-webkit-scrollbar { display: none; }
+
+/* 顶栏透明、无底线（与其余三页一致） */
+.docpage__bar {
+  border-bottom: 0;
+  background: transparent;
+}
+/* 标题绝对定位居中（本页左右各一颗钮，对称，不需要 --title-w 那套脚本） */
+.docpage__title {
+  width: auto;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+/* 返回钮：纯图标圆钮，与 chat 页顶栏同款 */
+.page__back {
+  flex: 0 0 auto;
+  width: var(--h-pill);
+  min-width: var(--h-pill);
+  height: var(--h-pill);
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  color: var(--ink-2);
+}
+.page__back svg { width: 18px; height: 18px; }
+.page__back,
+.page__back:hover { text-decoration: none; }
+
+/* ---- 卡片组 ----
+   不套 base.css 的 .card：那是有内边距的独立卡，里面再放 .rowlist 就是
+   「卡中卡」，多一层 16px 白边和一对叠着的阴影。这里只要一张张列表卡，
+   组间间距交给 .docpage__flow 的 gap。
+   卡片上方的分组标题已移除，分组语义改由 <section aria-label> 承载。 */
+/* 设置项之间补分隔线（.row 自带，.setting 是自定义行需要手动加） */
+.setting + .setting { border-top: 1px solid var(--line); }
+
+/* ---- 账号信息 ---- */
+/* 整行是一个 <button class="row acct">：.row 给高度与按下反馈，
+   这里补横向排布。未授权时可点（去扫码），授权后脚本摘掉按钮语义。 */
+.acct {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-md) var(--sp-lg);
+}
+/* 可点时给手型；授权后脚本会 disabled（摘掉焦点与点击），
+   这里把灰掉的观感与手型都压回来 —— 它是一张信息卡，不是失效的按钮。 */
+.acct:not(.is-authed) { cursor: pointer; }
+.acct:disabled { opacity: 1; cursor: default; }
+.acct__chev { flex: 0 0 auto; width: 18px; height: 18px; color: var(--ink-3); }
+.acct.is-authed .acct__chev { display: none; }
+.acct__avatar {
+  flex: 0 0 auto;
+  width: var(--figure-dock);
+  height: var(--figure-dock);
+  border-radius: var(--r-pill);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.acct__avatar svg { width: 24px; height: 24px; }
+.acct__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.acct__body { flex: 1 1 auto; min-width: 0; display: block; }
+.acct__name {
+  display: block;
+  font-size: var(--text-base);
+  font-weight: var(--w-mid);
+  color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acct__phone {
+  display: block;
+  margin-top: var(--sp-3xs);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 设置项：外观模式（三选一）---- */
+/* 允许换行：320 窄屏（或用户开了微信大字档）时，「外观模式」+ 三格分段
+   放不进一行 —— 分段三段文字加上内边距约 194px，卡内宽只剩 240px。
+   换行后分段落到第二行右侧，比把「外观模式」压成一列竖排的字可读。
+   .setting__name 必须 flex: 0 0 auto（不许收缩）：中文的 min-content 只有一个
+   字宽，允许收缩的话它会被压成竖排，永远触发不了换行。 */
+.setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-sm) var(--sp-md);
+  padding: var(--sp-md) var(--sp-lg);
+  min-height: var(--h-tap);
+}
+.setting__name {
+  flex: 0 0 auto;
+  font-size: var(--text-base);
+  color: var(--ink);
+}
+/* 分段控件：三格等宽，选中格用品牌色底。
+   用 role="radiogroup" + button[aria-checked]，读屏能报「选中」。 */
+.seg {
+  flex: 0 0 auto;
+  margin-left: auto;      /* 换行后仍靠右，不与上一行标签挤在一起 */
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--mist-1);
+  border-radius: var(--r-pill);
+}
+/* 可见形体 28px 高、热区靠 ::before 撑到 --h-tap(44px)（§11 最小热区）。
+   与 base.css 的 .speakbtn 同一套做法：形体不必画大，热区必须够。 */
+.seg__opt {
+  position: relative;
+  padding: var(--sp-2xs) var(--sp-sm);
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.seg__opt::before {
+  content: '';
+  position: absolute; inset: calc((28px - var(--h-tap)) / 2) 0;
+}
+.seg__opt[aria-checked="true"] {
+  background: var(--brand);
+  color: var(--on-brand);
+  font-weight: var(--w-mid);
+}
+
+/* ---- 设置项：开关 ---- */
+/* 开关本身 28px 高，热区同样用 ::before 撑到 44px。
+   margin-left: auto 把它推到该行最右 —— 与上面分段控件同一条理由：
+   .setting__name 不收缩，剩余空间必须显式交给右侧控件。 */
+.switch {
+  flex: 0 0 auto;
+  margin-left: auto;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  border: 0;
+  padding: 0;
+  border-radius: var(--r-pill);
+  background: var(--mist-5);
+  transition: background-color var(--dur-short) var(--ease-out);
+}
+.switch::before {
+  content: '';
+  position: absolute; inset: calc((28px - var(--h-tap)) / 2) 0;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 22px; height: 22px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-btn);
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.switch[aria-checked="true"] { background: var(--brand); }
+.switch[aria-checked="true"]::after { transform: translateX(20px); }
+
+/* ---- 协议：外链行 ---- */
+.proto {
+  justify-content: space-between;
+  text-decoration: none;
+}
+.proto,
+.proto:hover { text-decoration: none; }
+.proto__name { flex: 1 1 auto; font-size: var(--text-base); color: var(--ink); }
+.proto__ext { flex: 0 0 auto; width: 18px; height: 18px; color: var(--ink-3); }
+
+/* ---- 退出登录 ---- */
+/* 只在已授权时出现（脚本按登录态切 hidden）。 */
+.logout { margin-top: var(--sp-xl); }
+
+/* ---- 扫码授权弹窗（与首页 / 对话页同一套形态与素材）---- */
+dialog.modal.authq {
+  width: 300px;
+  max-width: calc(100% - var(--sp-xl) * 2);
+}
+/* 占位二维码：assets/demo-qr.png，不指向真实链接。点它 = 演示「扫上了」。 */
+.authq__qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: var(--sp-lg) auto 0;
+  padding: var(--sp-sm);
+  background: #FFFFFF;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.authq__qr img { width: 100%; height: 100%; display: block; }
+.authq h2 { text-align: center; }
+/* 标题只是接初始焦点的落点（见 DOM 注释），不该画出焦点框。 */
+.authq h2:focus,
+.authq h2:focus-visible { outline: none; }
+
+/* 深色模式：顶栏返回钮走主色（与另三页同一口径）。
+   两条：前者管「系统深色 + 未选浅色」，后者管「强制深色 + 系统浅色」。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .page__back { color: var(--brand); }
+}
+html[data-theme="dark"] .page__back { color: var(--brand); }
+
+/* 深色下 .toast 的 base 配色是白底白字（--ink 与 --ink-on-dark 同值），
+   与其余各页同款覆写。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .toast {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+  }
+}
+html[data-theme="dark"] .toast {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+}
+</style>
+</head>
+<body>
+
+<div class="docpage">
+
+  <header class="docpage__bar">
+    <!-- 返回：纯图标圆钮，与 chat 页顶栏同款 -->
+    <button class="pill page__back" type="button" id="btn-back" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+
+    <h1 class="docpage__title">设置</h1>
+  </header>
+
+  <main class="docpage__flow">
+
+    <!-- 一、账号信息：整行是一个按钮 —— 未授权时点它弹扫码窗；
+         授权后没有可点的动作，脚本会摘掉按钮语义（见 renderAccount）。 -->
+    <section aria-label="账号信息">
+      <div class="rowlist">
+        <button class="row acct" type="button" id="acct-entry">
+          <span class="acct__avatar">
+            <!-- 未授权时是占位图形；授权后换成微信头像（脚本替换成 <img>） -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="8.6" r="3.9"/>
+              <path d="M4.6 20.2a7.4 7.4 0 0 1 14.8 0"/></svg>
+          </span>
+          <!-- button 只允许短语内容（phrasing content），用 span 不用 div/p -->
+          <span class="acct__body">
+            <span class="acct__name" id="acct-name">未登录</span>
+            <span class="acct__phone" id="acct-phone">点击这里扫码授权</span>
+          </span>
+          <!-- 未授权时的前进箭头：说明「这行可以点」。授权后由脚本隐藏。 -->
+          <svg class="acct__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- 二、设置项 -->
+    <section aria-label="设置">
+      <div class="rowlist">
+        <div class="setting">
+          <span class="setting__name" id="theme-label">外观模式</span>
+          <div class="seg" role="radiogroup" aria-labelledby="theme-label">
+            <button class="seg__opt" type="button" role="radio" data-theme-opt="auto" aria-checked="true">跟随设备</button>
+            <button class="seg__opt" type="button" role="radio" data-theme-opt="light" aria-checked="false">浅色</button>
+            <button class="seg__opt" type="button" role="radio" data-theme-opt="dark" aria-checked="false">深色</button>
+          </div>
+        </div>
+
+        <div class="setting" id="row-autospeak" hidden>
+          <span class="setting__name" id="speak-label">自动播报</span>
+          <button class="switch" type="button" role="switch" id="sw-autospeak"
+                  aria-labelledby="speak-label" aria-checked="false"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 三、协议阅读：地址待定，先 toast 占位（同首页协议弹窗口径） -->
+    <section aria-label="协议阅读">
+      <div class="rowlist">
+        <a class="row proto" href="#" data-proto="服务协议">
+          <span class="proto__name">服务协议</span>
+          <svg class="proto__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+            <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+        </a>
+        <a class="row proto" href="#" data-proto="隐私协议">
+          <span class="proto__name">隐私协议</span>
+          <svg class="proto__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/>
+            <path d="M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <!-- 四、退出登录。只在已授权时出现，未授权由脚本加 hidden。 -->
+    <button class="btn btn--ghost btn--block logout" type="button" id="btn-logout" hidden>退出登录</button>
+
+  </main>
+</div>
+
+<!-- 退出二次确认。原生 dialog：Esc 自带关闭，焦点锁在层内。 -->
+<dialog class="sheet" id="logout-sheet" aria-labelledby="logout-title">
+  <h2 id="logout-title">退出登录？</h2>
+  <p>退出后需要重新授权才能使用。</p>
+  <div class="cluster">
+    <button class="btn btn--quiet" type="button" id="logout-cancel">取消</button>
+    <button class="btn btn--danger" type="button" id="logout-ok">退出</button>
+  </div>
+</dialog>
+
+<!-- 扫码授权弹窗。与首页 / 对话页同款占位二维码。
+     点码 = 已扫码 → 落演示身份 → 本页立刻换成真实登录态外观。 -->
+<dialog class="modal authq" id="auth-sheet" aria-labelledby="auth-sheet-title">
+  <!-- tabindex=-1 + autofocus：showModal 默认把焦点给第一个可聚焦元素（那颗二维码
+       按钮），会画出一圈焦点框，看着像「二维码已被选中」。让焦点落在标题上。 -->
+  <h2 id="auth-sheet-title" tabindex="-1" autofocus>微信扫码登录</h2>
+  <button class="authq__qr" type="button" aria-label="演示：已扫码，点击登录">
+    <img src="./assets/demo-qr.png" alt="" width="320" height="320" loading="lazy" decoding="async">
+  </button>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="./js/auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2400);
+  }
+
+  /* ---- 返回：从哪来回哪去，未知来源回首页 ---- */
+  var BACK_MAP = {
+    index:   './index.html',
+    chat:    './chat.html',
+    history: './history.html',
+    setting: './setting.html'
+  };
+  document.getElementById('btn-back').addEventListener('click', function () {
+    var v = '';
+    try { v = (new URLSearchParams(location.search).get('from') || '').trim(); } catch (err) { v = ''; }
+    location.href = BACK_MAP[v] ? BACK_MAP[v] : './index.html';
+  });
+
+  /* ---- 账号信息 ----
+     未授权：占位图形 + 「未登录」，整行可点 → 弹扫码窗。
+     授权后：换成微信头像与昵称，行降级为纯展示（摘掉按钮语义与箭头）。 */
+  var acctEntry = document.getElementById('acct-entry');
+  var acctName = document.getElementById('acct-name');
+  var acctPhone = document.getElementById('acct-phone');
+  var acctAvatar = acctEntry.querySelector('.acct__avatar');
+  var logoutBtn = document.getElementById('btn-logout');
+  var autoSpeakRow = document.getElementById('row-autospeak');
+
+  /* 手机号脱敏：保留前 3 后 4，中间按实际位数打星。
+     位数不足 8 位直接返回占位 —— 脱不干净就别显示（同 v1.1 account 的口径）。 */
+  function maskPhone(p) {
+    if (!p || p.length < 8) return '—';
+    /* Array(n).join('*') 只产出 n-1 颗星（join 是分隔符），要补 1：
+       11 位号留 3+4、中间 4 颗星，得到一个既认得出又不泄露的 11 位。 */
+    return p.slice(0, 3) + new Array(Math.max(2, p.length - 6)).join('*') + p.slice(-4);
+  }
+
+  function renderAccount() {
+    var user = Auth.get();
+    var authed = !!(user && (user.wx || user.phone));
+
+    /* 已授权后这行没有动作可做：一并摘掉按钮语义与焦点，
+       否则读屏仍会把它念成「按钮」，键盘 Tab 也会停在上面。 */
+    if (authed) {
+      acctEntry.classList.add('is-authed');
+      acctEntry.disabled = true;
+    } else {
+      acctEntry.classList.remove('is-authed');
+      acctEntry.disabled = false;
+    }
+    logoutBtn.hidden = !authed;
+    /* 自动播报只在登录后出现：它作用于账号的对话体验，
+       未登录时这一行是灰的、也没有可用场景。 */
+    autoSpeakRow.hidden = !authed;
+
+    if (!authed) {
+      acctName.textContent = '未登录';
+      acctPhone.textContent = '点击这里扫码授权';
+      return;
+    }
+
+    acctName.textContent = user.nickname || '微信用户';
+    acctPhone.textContent = user.phone ? maskPhone(user.phone) : '微信授权登录';
+
+    /* 有头像就换成 <img>：同一张图重复渲染时只换 src，不重复建节点。 */
+    if (user.avatar) {
+      var img = acctAvatar.querySelector('img');
+      if (!img) {
+        img = document.createElement('img');
+        img.alt = '';
+        acctAvatar.innerHTML = '';
+        acctAvatar.appendChild(img);
+      }
+      if (img.getAttribute('src') !== user.avatar) img.src = user.avatar;
+    }
+  }
+
+  /* 微信内加载即授权（与对话页同口径）：真机不会出现扫码窗。
+     非微信端什么都不做，等用户点账号行。 */
+  if (Auth.isWeChat()) Auth.boot();
+
+  renderAccount();
+
+  /* ---- 外观模式 ---- */
+  var themeOpts = document.querySelectorAll('[data-theme-opt]');
+
+  function renderTheme() {
+    var cur = Settings.getTheme();
+    themeOpts.forEach(function (b) {
+      b.setAttribute('aria-checked', String(b.getAttribute('data-theme-opt') === cur));
+    });
+  }
+  themeOpts.forEach(function (b) {
+    b.addEventListener('click', function () {
+      Settings.setTheme(b.getAttribute('data-theme-opt'));
+      renderTheme();
+    });
+  });
+  renderTheme();
+
+  /* ---- 自动播报 ---- */
+  var sw = document.getElementById('sw-autospeak');
+  function renderSpeak() {
+    sw.setAttribute('aria-checked', String(Settings.isAutoSpeak()));
+  }
+  sw.addEventListener('click', function () {
+    Settings.setAutoSpeak(!Settings.isAutoSpeak());
+    renderSpeak();
+  });
+  renderSpeak();
+
+  /* ---- 协议：地址待定，先 toast 占位 ---- */
+  document.querySelectorAll('[data-proto]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      toast(a.getAttribute('data-proto') + '链接待接入');
+    });
+  });
+
+  /* ---- 退出登录：二次确认 ---- */
+  var sheet = document.getElementById('logout-sheet');
+
+  document.getElementById('btn-logout').addEventListener('click', function () {
+    if (typeof sheet.showModal === 'function') sheet.showModal();
+    else sheet.setAttribute('open', '');
+  });
+
+  document.getElementById('logout-cancel').addEventListener('click', function () {
+    if (typeof sheet.close === 'function') sheet.close();
+    else sheet.removeAttribute('open');
+  });
+
+  document.getElementById('logout-ok').addEventListener('click', function () {
+    if (typeof sheet.close === 'function') sheet.close();
+    else sheet.removeAttribute('open');
+    Auth.logout();
+    /* 回首页。带 ?agreed=1 告诉首页「本次会话已同意过协议」，
+       避免退出后又弹一次 —— 用户刚在设置页里操作过，再弹是打断。 */
+    location.replace('./index.html?agreed=1');
+  });
+
+  /* ---- 扫码授权：未授权时点账号行弹窗，点码落身份 ---- */
+  var authSheet = document.getElementById('auth-sheet');
+
+  function closeAuthSheet() {
+    if (typeof authSheet.close === 'function') authSheet.close();
+    else authSheet.removeAttribute('open');
+  }
+
+  acctEntry.addEventListener('click', function () {
+    if (acctEntry.classList.contains('is-authed')) return;   /* 已登录时这行只是展示 */
+    if (typeof authSheet.showModal === 'function') authSheet.showModal();
+    else authSheet.setAttribute('open', '');
+  });
+
+  authSheet.addEventListener('cancel', closeAuthSheet);   /* Esc 不经过按钮 */
+  document.querySelector('.authq__qr').addEventListener('click', function () {
+    /* 传 true：点码＝用户显式授权，非微信端也要落登录态。 */
+    Auth.boot(true);
+    closeAuthSheet();
+    renderAccount();
+    toast('授权成功');
+  });
+})();
+</script>
+</body>
+</html>

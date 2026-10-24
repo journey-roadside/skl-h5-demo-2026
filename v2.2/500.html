@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>服务暂时不可用 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<style>
+/* ==========================================================================
+   500 · 服务暂时不可用 —— 见 h5v2/DESIGN.md §4.4 状态页
+   骨架：居中的一句话说明 + 一个明确的动作按钮。
+   与 404 的区别在「有没有重试价值」：404 重试无用，只给出口；
+   500 是暂时的，所以动作是「重新加载」，出口降为次级文字链接。
+
+   报错文案按 §7 三句：① 出了什么事 ② 为什么 ③ 怎么办。
+   不写「错误码 500」给用户看 —— 那是日志信息，不是给人读的。
+   ========================================================================== */
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 100%;
+  padding-block: var(--sp-2xl);
+}
+
+.status__code {
+  font-size: var(--text-3xl);
+  font-weight: var(--w-head);
+  line-height: var(--lh-display);
+  color: var(--ink-3);
+}
+
+.status__title {
+  margin-top: var(--sp-xs);
+  font-size: var(--text-xl);
+}
+
+.status__hint {
+  margin-top: var(--sp-sm);
+  max-width: var(--measure);
+  color: var(--ink-3);
+}
+
+.status .btn { margin-top: var(--sp-xl); }
+
+/* 次级出口：字号不降级（§3 正文下限 16px），只靠颜色与位置退后一层 */
+.status__back { margin-top: var(--sp-md); }
+
+/* 矮屏（≤400px 高，实测最极端 568×320）：这一页比 404 多一行次级出口，
+   按常规留白会纵向溢出 45px。只收留白 —— 字号与点击区不动（§3 / §10）。 */
+@media (max-height: 400px) {
+  .status { padding-block: var(--sp-md); }
+  .status .btn { margin-top: var(--sp-lg); }
+  .status__back { margin-top: var(--sp-xs); }
+}
+</style>
+</head>
+<body>
+
+<div class="h5">
+  <main class="h5__main status">
+
+    <p class="status__code" aria-hidden="true">500</p>
+
+    <h1 class="status__title">服务暂时不可用</h1>
+    <p class="status__hint">服务器出现异常。请稍后重新加载。</p>
+
+    <!-- 重新加载走 JS：纯 <a href=""> 在不支持的浏览器里是空跳转，必须留兜底 -->
+    <button class="btn btn--primary" type="button" id="retry">重新加载</button>
+    <a class="linklike status__back" href="./index.html">回到首页</a>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  document.getElementById('retry').addEventListener('click', function () {
+    location.reload();
+  });
+})();
+</script>
+</body>
+</html>

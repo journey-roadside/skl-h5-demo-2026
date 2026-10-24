@@ -1,0 +1,1435 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>数字人对话 | 湖北社科数据信息联盟</title>
+<link rel="stylesheet" href="./h5v2/tokens.css">
+<link rel="stylesheet" href="./h5v2/base.css">
+<link rel="stylesheet" href="./assets/theme.css">
+<script src="./js/settings.js"></script>
+<script>Settings.applyTheme();</script>
+<style>
+/* ==========================================================================
+   对话页 · Companion-Chat —— 见 h5v2/DESIGN.md §4.2
+   骨架：顶栏（44px 形象小头像 + 会话标题 + 新建 / 历史 / 设置三个动作）
+         欢迎卡（仅空对话时）→ 对话流
+         底部输入条（两态：键盘 / 录音 —— 见 §5.1）→ AI 标识合规行
+
+   整页滚动 + 顶栏/输入条 sticky，不写死高度（§4.2、§9）。
+   首页形象位与对话页形象位是两个东西：这里用 .figure--dock（44px 圆头像）。
+   本文件只写结构与页面级变体类，不改 base.css 的组件数值。
+   ========================================================================== */
+
+/* 背景与首页一致：同一层 --grad-hero 铺在 body 上（base.css 的 body
+   默认是纯色 --canvas）。铺在 body 而不是 .docpage：后者最宽 1000px，
+   宽屏下两侧会露出纯底色，与首页那种满屏渐变不一致。 */
+body {
+  background: var(--grad-hero);
+}
+/* 顶栏透明，让 --grad-hero 连续通过（不透明底会在顶部切出色带）。
+   内容不再从它下面穿过 —— 改成内层滚动，滚动只发生在 .docpage__flow 里，
+   顶栏与底栏都是固定不动的外层。见下方 .docpage 的改法。 */
+.docpage__bar { background: transparent; }
+
+/* ---- 内层滚动：内容区滚动，顶栏与输入条不动 ----
+   原来是「整页滚动 + sticky 顶栏/底栏」，顶栏透明时内容会从它下面划过去，
+   字叠字很难看。改成 .docpage 定高 100dvh、只有中间的 flow 可滚：
+     · 顶栏、底栏（输入条）永远在原位，不需要任何遮罩或背景色；
+     · 滚动条出现在 flow 内部，与页面同高，不会撑出整页滚动。
+   用 100dvh 而非 100vh：微信地址栏收放时 vh 会跳变（同 base.css 的取舍）。 */
+.docpage {
+  height: 100dvh;
+  overflow: hidden;
+}
+.docpage__flow {
+  overflow-y: auto;
+  /* 内容滚到输入条上方时，底部留一点呼吸；输入条自身有 sticky 底，
+     这里不重复加 padding。 */
+  overscroll-behavior: contain;   /* 滚到尽头不把整页带着弹（iOS 橡皮筋） */
+}
+
+/* 会话标题：按顶栏中轴绝对定位。
+   不放在 flex 流里居中 —— 左侧只有头像、右侧有三个动作，两侧不等宽，
+   在「剩余空间」里居中会让标题整体偏左（320 下偏了 20px），不是屏幕中轴。
+   脱流后由脚本量出两侧控件、取更宽的一侧做对称留白（--title-w），才是真居中。
+
+   宽度必须只由布局决定、与文本长短无关，这是 fitTitle 二分的支点：
+   所以这里写死 width，而不是 auto / max-content。
+   居中态下 CSS 的 text-overflow 靠不住（省略号画在盒外、开头被无声吃掉），
+   真正截几个字交给 fitTitle；这里保留 overflow/text-overflow 只作兜底。 */
+.docpage__title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--title-w, 0);
+  font-size: var(--text-md);
+  font-weight: var(--w-head);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右侧三个动作都不参与伸缩，宽度各自固定，高度各由组件决定：
+   新建钮是 .iconbtn--sm、历史与设置是 .pill，三者都取 --h-pill（36px），天然同高。
+   间距直接用 .docpage__bar 的 gap（--sp-sm），不额外加 margin ——
+   margin 是叠在 flex gap 之上的，加了反而把顶栏撑松。
+   标题脱流后，剩下头像 + 三个动作——用 auto margin 把它们分开：
+   头像是第一个、跟着左内边距；三个动作被推到最右。 */
+.acct-entry { margin-right: auto; }
+.docpage__new,
+.docpage__hist,
+.docpage__setting { flex: 0 0 auto; }
+
+/* 窄屏标题改回「流内 flex 项」，不再绝对定位居中。
+   绝对居中是给宽屏算「两侧对称留白」用的：右侧多了设置钮后，三颗圆钮
+   让公式 w = barW − 2×max(left, right) − 2×gap 在 320 宽只剩 16px、
+   360 宽 56px，标题等于消失。改成流内后可用宽就是真实剩余空间
+   （320→108px、375→163px、414→199px，纯算术），且 CSS 的
+   text-overflow: ellipsis 在流内是可靠的（绝对定位居中时不可靠，见顶部注释）。
+   同时 measureTitleWidth() 在窄屏直接返回 0，fitTitle 原样放行，
+   截断交给 CSS —— 脚本量出来的宽度在这里已经不是布局依据。 */
+@media (max-width: 480px) {
+  /* auto margin 会先把剩余空间全部吃掉（早于 flex-grow 分配），
+     标题就永远拿不到宽度 —— 窄屏必须交还给标题去撑。
+     交还之后靠 space-between 兜住另一种情形：未授权时标题是 hidden，
+     没有它的话设置钮会紧贴头像。标题可见时 flex:1 已吃满，这条不再生效。 */
+  .docpage__bar { justify-content: space-between; }
+  .acct-entry { margin-right: 0; }
+  .docpage__title {
+    position: static;
+    transform: none;
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;   /* 盒中轴不再是屏幕中轴，居中反而显得偏右 */
+  }
+}
+
+/* 去掉顶栏底部的分隔线。base.css 的 .docpage__bar 带
+   border-bottom: 1px solid var(--line)，本页与首页同为「数字人」体系，
+   顶栏浮在渐变底上更干净（首页顶栏也没有这条线）。 */
+.docpage__bar { border-bottom: 0; }
+
+/* 历史 / 设置都是纯图标圆钮（文字已移除），全宽度都是 36px 正方，
+   与左侧「新建对话」同款同尺寸 —— 不再需要按视口切换形态。 */
+.pill.docpage__hist,
+.pill.docpage__setting {
+  width: var(--h-pill);
+  height: var(--h-pill);
+  padding: 0;
+  justify-content: center;
+}
+
+/* 顶栏（除头像外的）三颗动作钮统一到首页（index.html）的样式：
+   36px 圆钮 / 18px 图标 / --ink-2 次级文字灰。
+   原来这三钮各用品牌色（.iconbtn 基类、.acct-entry、本块覆盖），
+   与首页顶栏那几颗中性灰钮对不上；同为一页的页头动作，外观该是一套。
+   图标走 currentColor，改 color 一处即可。 */
+.pill.docpage__hist,
+.pill.docpage__setting,
+.docpage__new,
+.acct-entry { color: var(--ink-2); }
+/* 用 .iconbtn.docpage__new 提特异性：base.css 的 `.iconbtn--sm > svg` 是 (0,1,1)，
+   单写 `.docpage__new > svg` 也是 (0,1,1)，靠源序取胜不稳。 */
+.pill.docpage__hist svg,
+.pill.docpage__setting svg,
+.iconbtn.docpage__new > svg,
+.acct-entry svg { width: 18px; height: 18px; }
+
+/* 文字字号不再覆写：.pill 基类的 --text-xs(13px) 正是首页「切换形象」
+   那个胶囊用的字号，删掉原来那条 --text-base 覆盖就自动对齐了。 */
+
+/* 去掉悬停下划线。base.css 给所有 a:hover 加了 underline，那是给正文链接的；
+   这里是按钮形态的胶囊，与顶栏「新建」图标钮属于同一组动作，加下划线不合体。
+   含 :hover 是为了与 a:hover 特异性持平（0,2,0 vs 0,2,0），靠加载顺序取胜即可
+   —— 页面样式表在 base.css 之后引入；再叠一层 :hover 也好写。 */
+.pill.docpage__hist,
+.pill.docpage__hist:hover,
+.pill.docpage__setting,
+.pill.docpage__setting:hover { text-decoration: none; }
+
+/* 对话流容器：气泡纵向栈。base.css 有气泡本身，缺一个栈 */
+.docpage__flow { gap: var(--sp-md); }
+
+/* 隐藏对话流的滚动条。
+   改成内层滚动后，滚动条出现在 .docpage__flow 里，会贴着内容右缘画出一条灰条。
+   手机上滚动条本来就不该常显（内容本身已经说明「下面还有」），
+   桌面端隐藏后仍可用滚轮/触控板滚动，不影响可用性。
+   两套写法都要给：scrollbar-width 是标准属性，::-webkit-scrollbar 是
+   WebKit / 微信内核走的那条；只写一套另一套环境仍会画出默认样式。 */
+.docpage__flow {
+  scrollbar-width: none;          /* Firefox / 新版 Chromium */
+}
+.docpage__flow::-webkit-scrollbar { display: none; }   /* WebKit / 微信内核 */
+
+/* 欢迎卡的上下留白。
+   上边距不是「好看」，是功能性的：卡内形象头顶越出卡片上沿约 20px，
+   而卡片离 sticky 顶栏本来只有 flow 的 16px padding-top —— 不让位的话
+   头顶会被顶栏盖住。给足一整档 --sp-lg(24px)，把越出的部分连同安全余量
+   一起让出来。
+   下边距是卡片与对话流的间距（原先是 chips 撑开的，chips 已移除）。 */
+.herocard { margin-top: var(--sp-lg); margin-bottom: var(--sp-md); }
+
+/* 标题整体降一档：base.css 用 --text-lg(22px)，本页压到 --text-md(18px)。
+   卡里这句是「列举能问什么」，不是页面主标题，22px 抢了提示词的戏。
+   **必须写在下面两条媒体查询之前** —— 那两条各自用 clamp 做窄屏自适应，
+   写在后面会把它们一起盖掉（同特异性、源序取胜）。 */
+.herocard__title { font-size: var(--text-md); }
+
+/* ==========================================================================
+   手机段（<768）：形象占卡片高约 70%
+   ==========================================================================
+   占比是**自指**的：形象越大 → 文字列越窄 → 标题折行越多 → 卡片越高 →
+   占比又被拉回去。所以不能按公式解，要按实测的收敛点定（实测见下）。
+
+   「占 70%」的收敛点（形象宽 / 卡片高）：
+     视口   形象    标题行数   卡片高
+     320    158px      4       220
+     375    134px      3       191
+     414    140px      3       201
+   （320 是实测取的 158px；用 clamp 在 375/414 收敛到 134/140。）
+
+   **与「标题 ≤2 行」互斥。** 2 行时形象上限只到 51%/60%/65%，
+   要到 70% 窄屏必然 3~4 行。本页取占比优先 —— 这是用户明确的选择。
+   代价：320 下标题 4 行，卡片从 155px 涨到 220px。
+
+   **字号必须同步放大，否则占比不成立。** 字号由「卡片高 / 3.2」反推
+   （320→68.7px→21.5px，375→59.7px→18.7px，414→62.8px→19.6px）——
+   形象变大而字号不动的话，卡片高度涨得比形象慢，占比永远到不了 70%。
+   卡在 §3 的 16px 下限之上，不破规矩。
+
+   注意：量行数要用 Range.getClientRects()，别用 scrollHeight / lineHeight ——
+   任何 min-height 都会把 scrollHeight 抬高，行数会被算多（本页踩过一次）。 */
+/* ≤375：不显示数字人形象，只留「文字 + 提示词」。
+   窄屏本来就被形象挤到标题折 3~4 行、卡片涨到 220px，而形象只占右上一角，
+   性价比是负的 —— 直接让位比继续挤更好。 */
+@media (max-width: 375px) {
+  .herocard__figure { display: none; }
+  .herocard__body { padding-right: 0; }
+}
+
+/* 文字块压在形象之上：形象是绝对定位、且在 DOM 里排在正文之后，
+   两者若因字号放大而擦碰，默认会由形象盖住文字。给文字一个更高层，
+   文字永远在上（base.css 里 .herocard__body 已是 position: relative）。 */
+.herocard__body { z-index: 1; }
+
+@media (max-width: 767.98px) {
+  /* 标题字号：从 530px 往下开始递减，让「把字缩到放得下」先于「折行」发生。
+     原先的 clamp 在 414px 就撞到上限 22px 被锁死，而那一段可用宽只有 191px
+     —— 字号不动、宽度不够，414~530 只能折 3 行，是整条曲线上唯一的死区。
+
+     系数由实测反推，不是拍脑袋：逐个视口二分出「保持 2 行的最大字号」，
+     415px 以上该曲线对可用宽近乎线性（字号 ≈ 0.0734×可用宽 − 0.14），
+     再代入可用宽 = 0.916×视口宽 − 185（扣掉左右留白、卡内边距与形象位）
+     得到 6.723vw − 13.72px。实测吻合到 0.2px 以内。
+
+     两处硬边界，别再往下压：
+     · 上限仍是 --text-lg(22px)：530px 以上本来就有富余，没必要继续放大。
+     · 下限 16px 是 §3 的正文下限。曲线在 442px 触底 —— 这就是「2 行」的
+       几何下限（16px 下两行至少需要约 311px 可用宽）。442 以下再怎么压都
+       放不下 2 行，所以那里不该跟着这条曲线继续缩，见下面 ≤375 的还原规则。
+     量行数请继续用 Range.getClientRects()，别用 scrollHeight（见上）。 */
+  .herocard__title { font-size: clamp(16px, calc(6.723vw - 13.72px), var(--text-md)); }
+
+  /* 窄屏把左右内边距收到 --sp-md，给「标题 2 行」留出余量：
+     原来 320px 下可用宽 160px，而 16px 字号恰好需要 160px ——
+     卡在临界点上，亚像素取整就可能溢出成 3 行。 */
+  .herocard { padding-inline: var(--sp-md); }
+}
+
+/* ≤375 的标题字号还原。
+   必须排在上面那条 767.98 媒体查询**之后** —— 两条查询同特异度，
+   后写的胜出，放在前面会被 6.723vw 那条静默盖掉（本页踩过一次）。
+
+   为什么不跟新曲线：形象在这个区间已隐藏，标题能吃满整卡宽（375 下有 311px），
+   本来 19.5px 就排得下 2 行；新曲线是按「有形象占位」算的，会把它压到 16px —— 白缩。
+   旧式 clamp(16px, -4.4px+6.38vw, 22px) 在 320~375 全程都不足 2 行所需，
+   即这段范围内它只会给 2 行，沿用旧值等于「面积不变、字号复原」。
+   别顺手把它也改成新曲线。 */
+@media (max-width: 375px) {
+  .herocard__title { font-size: clamp(16px, calc(-4.4px + 6.38vw), var(--text-md)); }
+}
+
+
+/* ==========================================================================
+   提示词位（空态欢迎卡内）—— 单行，像广告条那样上下滚动换词
+   ==========================================================================
+   放在 .herocard__body 里，左对齐、宽度受右形象约束，与上面的标题同一条竖线。
+
+   这里没有用 base.css 的 .chips/.chip：
+   那是横排多个可滑的标签，与「一次只露一条、自动轮换」是两种东西。
+   也没有用 .marquee 之类：轮换的是**整条**提示词（步进），不是字符流。 */
+
+/* 窗口：只露一行，多出来的裁掉。
+   高度由脚本按「一行真实高度」写进来，不在这里定死 —— 微信字体档位放大后
+   一行会变高，CSS 里写死就会把字裁掉。 */
+.prompts {
+  /* 与上方内容的间距由 .herocard 的 gap(--sp-sm) 给，这里只补一点，
+     让提示词与标题之间比「标题到说明」略松，形成一层分隔。 */
+  margin-top: var(--sp-2xs);
+  overflow: hidden;
+}
+
+/* 轨道：三档纵排，整体上下平移换档。
+   只动 transform（§8）—— 位移 height/margin 会触发布局，是禁止项。 */
+.prompts__track {
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.prompts[data-no-anim] .prompts__track { transition: none; }
+
+/* 单条：本身是 button（可聚焦、可点、语义正确），样式降到接近文字。
+   图标 + 文字两列，纵向居中。
+   纵向不设固定高，让大字号档位下自然长高 —— 定死高会在微信大字号下裁字。
+   ——但它的行高会被脚本量出来写进 .prompts 的高度，两处要一致。 */
+.prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  width: 100%;
+  padding: var(--sp-2xs) 0;
+  text-align: left;
+  /* --text-base 16px，与正文同档 —— 提示词是这一屏的「起手式」，
+     比标题更需要被读清（标题已降到 18px，两者只差一档）。
+     早期用 13px 是因为窄屏被形象压到 195px、16px 会截掉四成；
+     现在 ≤375 已隐藏形象、可用宽放开，16px 放得下。 */
+  font-size: var(--text-base);
+  color: var(--brand);
+  /* 当前档之外压色。位置差异由轨道滑动给足，不必再缩小字号 ——
+     缩小会让同一段文字在不同档位看起来字号不同，与字号级别固定的规矩相冲。 */
+  opacity: .4;
+  transition: opacity var(--dur-short) var(--ease-out),
+              transform var(--dur-micro) var(--ease-out);
+}
+/* 320 窄屏：16px 下最长那条提示词（256px）超出可用宽（232px）会被截断，
+   回落到 --text-xs(13px) 才放得下。360 以上不触发。
+   体系的字号档位是 13/16/18/22/28，没有 14px 这一级 —— 不凭空造一个。 */
+@media (max-width: 340px) {
+  .prompt { font-size: var(--text-xs); }
+}
+.prompt[data-active="true"] { opacity: 1; }
+.prompt:active { transform: translateY(1px); }
+
+/* 图标：气泡 + 问号，说明「这是一句可以问的话」。
+   flex 项默认会压缩，必须 flex:none —— 否则窄屏下图标先被压扁，
+   而它正是这条内容里最需要保住的部分。 */
+.prompt__ico {
+  flex: none;
+  width: 16px; height: 16px;
+  /* 与文字同色，靠 currentColor 跟着 .prompt 的 color / opacity 走，
+     不必另写颜色，也不会在非当前档时与文字深浅不一。 */
+  stroke: currentColor;
+}
+
+/* 文字：唯一的可伸缩项，截断发生在这里。
+   截断必须落在文字上而不是 .prompt 上 —— 否则省略号会盖住图标。 */
+.prompt__txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 输入条不再是页面最底部的元素（AI 标识在它下面），
+   所以 base.css 里那份 --pad-bottom 成了死间距 —— 它原本负责「别被 iPhone 小黑条
+   和 iOS 微信底栏盖住」，那个职责已经转移给下面的 .docpage__aiflag。
+   下内边距归零：输入框与标识之间的空隙由 .aiflag 自己的上内边距单独控制，
+   两处都给值就会叠成一段说不清来历的空白。 */
+.docpage__foot .composer { padding-bottom: 0; }
+
+/* AI 标识坐落在输入条下方、水平居中（.aiflag 自带 text-align:center）。
+   文字要落在「输入框 ↔ 页底」之间，所以上下都留出空隙；
+   但两段空隙之和必须等于原来的 12px（--sp-sm），否则这个盒子会变高/变矮，
+   而它变高就会把上面的输入条顶上去 —— 输入框的位置是要保持不动的。
+   因此这里是「把下方的一段挪一部分到上方」，不是加间距：
+   --sp-2xs(4) 在上、--sp-xs(8) 在下，和仍是 12，输入框原地不动，文字上移 4px。 */
+.docpage__aiflag {
+  padding-top: var(--sp-2xs);
+  padding-bottom: calc(var(--sp-xs) + var(--safe-bottom));
+}
+
+/* ==========================================================================
+   顶栏 · 切回数字人模式（带文字的胶囊）
+   ==========================================================================
+   用 .pill 基类的胶囊形态（白底 + 投影 + 圆角），与首页那颗「对话模式」
+   互为镜像：两边都靠文字说明去向。宽度按内容自适应，不再锁死 36px。 */
+.acct-entry {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-2);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* 胶囊内文字与首页 .pill__label 同档（13px，跟随 .pill 基类的 --text-xs） */
+.docpage__mode-txt { font-size: var(--text-xs); }
+
+/* 按钮形态不该有链接下划线。base.css 给 a:hover 加了 underline（给正文链接的），
+   这颗钮是 <a>，不写这条悬停时文字会带下划线。
+   含 :hover 是为了与 a:hover 特异性持平（0,2,0 vs 0,2,0）。 */
+.acct-entry,
+.acct-entry:hover { text-decoration: none; }
+
+/* <768：与首页同一阈值 —— 文字收起、按钮退回纯图标圆钮。
+   手机上页头要留给标题，带文字的胶囊会把它挤到只剩几个字。 */
+@media (max-width: 767.98px) {
+  .docpage__mode-txt { display: none; }
+  .acct-entry {
+    width: var(--h-pill);
+    min-width: var(--h-pill);
+    height: var(--h-pill);
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    border-radius: var(--r-pill);
+  }
+}
+/* 图标尺寸与顶栏其他钮一致（18px，见顶部统一那条）；这里不再覆写。 */
+.acct-entry:active { transform: translateY(1px); }
+
+/* 头像不加任何滤镜。
+   深色模式下 base.css 会给形象类图片上 brightness/contrast 提亮，那是给
+   数字人插画调的；用户头像是真实照片，被提亮会失真、也认不出本人。
+   这里把它按平，将来换成 <img> 真实微信头像时同样受益。 */
+.acct-entry,
+.acct-entry img,
+.acct-entry svg { filter: none; }
+
+/* 头像是「用户」，此前挂的是数字人形象（`头像 = 助手`），语义错了，
+   现已换成默认人头图形。相关说明见 markup 处注释。 */
+
+/* 输入框在空态时给一句占位说明，说明可以问什么（§7 文案） */
+.composer__field input::placeholder { color: var(--ink-3); }
+
+/* 来源行：文字与播报钮同行，钮贴右端。
+   base.css 的 .bubble__src 是 display:block，直接用会把钮挤到下一行 ——
+   这里改成 flex，文字占满剩余宽度、钮固定不动。
+   用复合选择器而不是单类名覆写：base.css 那条特异性相同且在更前面，
+   但真正会赢的是「同特异性下更靠后」的规则 —— 本页样式表在 base.css 之后，
+   所以单类名本来也能赢；写全两层是为了让「我在覆写哪条」一眼可查。 */
+.bubble--ai .bubble__src {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-sm);
+}
+/* 播报钮在来源行里比 36px 再收一档：它挂在一行 13px 的小字旁边，
+   36px 的圆会把这行读成「一个按钮 + 一行附注」。28px 仍够放 20px 图标，
+   热区由 .speakbtn::before 撑到 44px，不受影响。 */
+.bubble__src .speakbtn {
+  width: 28px;
+  height: 28px;
+}
+.bubble__src .speakbtn::before { inset: -8px; }   /* 28 + 8×2 = 44 热区 */
+.bubble__src .speakbtn svg { width: 17px; height: 17px; }
+
+/* 深色模式：顶栏动作钮（头像 + 新建 / 历史 / 设置）改用主色。
+   浅色下按钮走 --ink-2 中性灰（不抢内容），深色底上灰色发闷、边界不清。
+   **标题不在此列** —— 它是正文层级的文字，跟随 --ink（浅色深字 / 深色白字）。
+   **必须放在样式块最末**：.acct-entry 的 color 在后面还有一条，
+   放前面会被它盖掉（实测「数字人模式」钮仍是灰的）。 */
+/* html:not([data-theme="light"]) 是给设置页「强制浅色」用的：用户选了浅色，
+   系统却是深色时，这条媒体查询仍会命中，得让选择器自己退出。
+   下面那条 html[data-theme="dark"] 覆盖「强制深色 + 系统浅色」。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .docpage__new,
+  html:not([data-theme="light"]) .pill.docpage__hist,
+  html:not([data-theme="light"]) .pill.docpage__setting,
+  html:not([data-theme="light"]) .acct-entry { color: var(--brand); }
+}
+html[data-theme="dark"] .docpage__new,
+html[data-theme="dark"] .pill.docpage__hist,
+html[data-theme="dark"] .pill.docpage__setting,
+html[data-theme="dark"] .acct-entry { color: var(--brand); }
+
+/* ==========================================================================
+   扫码授权弹窗（与首页同一套形态与素材）
+   ==========================================================================
+   本页的新建对话 / 历史 / 发送 / 开始录音四个动作都要先有身份，
+   未授权时弹这个窗示意「扫码 → 登录」。素材、尺寸、交互与 index.html 一致，
+   改其中一处时另一处要跟。
+   宽度的特异性见首页同名注释：必须叠 `dialog.modal` 才压得过 base.css。 */
+dialog.modal.authq {
+  width: 300px;
+  max-width: calc(100% - var(--sp-xl) * 2);
+}
+/* 占位二维码：assets/demo-qr.png，不指向真实链接。点它 = 演示「扫上了」。 */
+.authq__qr {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: var(--sp-lg) auto 0;
+  padding: var(--sp-sm);
+  background: #FFFFFF;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.authq__qr img { width: 100%; height: 100%; display: block; }
+.authq h2 { text-align: center; }
+/* 标题只是接初始焦点的落点（见 DOM 注释），不该画出焦点框。
+   tabindex=-1 不在 Tab 序列里，抑制它不影响键盘导航。 */
+.authq h2:focus,
+.authq h2:focus-visible { outline: none; }
+
+/* 深色模式下的反馈条：base.css 的 .toast 用 background:var(--ink)、
+   color:var(--ink-on-dark)，而深色主题里两者同为 #ECEBF5 —— 白底白字。
+   这里换成 --surface 作底、--ink 作字。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .toast {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+  }
+}
+html[data-theme="dark"] .toast {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-raise), 0 0 0 1px var(--line);
+}
+</style>
+</head>
+<body>
+
+<div class="docpage">
+
+  <!-- 顶栏：左端是「切换回数字人对话」钮，取代原 v1.1 的用户头像入口。
+       图标是人像 + AI 星芒的组合，表意数字人对话；单用人像会读成「我的账户」
+       （那正是这里原来的语义）。
+       普通对话模式里没有数字人形象，所以这里不放「切换形象」；
+       这个钮就是两种模式之间的唯一切换口。 -->
+  <header class="docpage__bar">
+    <a class="pill acct-entry" id="btn-account"
+       href="./index.html" aria-label="切换回数字人对话模式">
+      <!-- 实心图标：fill 跟随按钮 color（currentColor），换主题不用改这里 -->
+      <svg viewBox="0 0 1026 1024" fill="currentColor" aria-hidden="true">
+        <path d="M548.750222 293.546667h-266.24c-31.004444 0-57.571556 11.150222-79.587555 33.393777-21.959111 22.243556-32.995556 49.152-32.995556 80.611556v331.548444c0 31.516444 11.036444 58.368 32.995556 80.611556 22.016 22.243556 48.583111 33.393778 79.644444 33.393778h378.88c31.118222 0 57.628444-11.150222 79.644445-33.393778 22.016-22.186667 32.995556-49.095111 32.995555-80.611556v-165.774222h81.92v165.774222c0 54.385778-19.000889 100.807111-57.002667 139.207112a186.311111 186.311111 0 0 1-137.557333 57.685333h-378.88c-53.703111 0-99.555556-19.228444-137.557333-57.628445a190.748444 190.748444 0 0 1-57.002667-139.264V407.552c0-54.385778 19.000889-100.750222 57.002667-139.207111 38.001778-38.456889 83.854222-57.685333 137.557333-57.685333h266.24V293.546667z"/>
+        <path d="M649.272889 265.216a10.012444 10.012444 0 0 0 0 18.887111l128.512 47.502222 47.502222 128.568889a10.012444 10.012444 0 0 0 18.773333 0l47.559112-128.568889 128.455111-47.502222a10.069333 10.069333 0 0 0 0-18.887111l-128.455111-47.502222-47.559112-128.512a10.069333 10.069333 0 0 0-18.773333 0l-47.559111 128.568889-128.455111 47.445333z"/>
+        <path d="M301.340444 472.007111a48.924444 48.924444 0 0 1 13.596445-33.962667 45.511111 45.511111 0 0 1 32.768-14.051555 45.511111 45.511111 0 0 1 32.768 14.051555 48.924444 48.924444 0 0 1 13.539555 33.962667v159.971556a48.924444 48.924444 0 0 1-13.539555 33.962666 45.511111 45.511111 0 0 1-32.768 14.051556 45.511111 45.511111 0 0 1-32.768-14.051556 48.924444 48.924444 0 0 1-13.653333-33.962666V472.007111z m205.937778 0a48.924444 48.924444 0 0 1 13.653334-33.962667 45.511111 45.511111 0 0 1 32.711111-14.051555 45.511111 45.511111 0 0 1 32.768 14.051555 48.924444 48.924444 0 0 1 13.596444 33.962667v159.971556a48.867556 48.867556 0 0 1-13.596444 33.962666 45.511111 45.511111 0 0 1-32.768 14.051556 45.511111 45.511111 0 0 1-32.768-14.051556 48.924444 48.924444 0 0 1-13.539556-33.962666V472.007111z"/>
+      </svg>
+      <span class="docpage__mode-txt" aria-hidden="true">数字人模式</span>
+    </a>
+    <!-- 会话标题同样只在已授权时出现：未授权时顶栏只剩「数字人模式」与设置，
+         首帧靠 hidden 撑住，不闪。 -->
+    <h1 class="docpage__title" id="conv-title" hidden>新对话</h1>
+
+    <!-- 先清空会话再跳，否则在已有会话里点它等于原地不动
+         （标题由首条提问决定，跳回同一 URL 还是那条会话）。
+         留 href 兜底：脚本没跑起来时它仍是一个可用的「回对话页」链接。
+         两个动作只在已授权时出现（会话与历史都属于账号数据），
+         未授权由脚本加 hidden —— 初始写 hidden 让首帧就不闪。 -->
+    <a class="iconbtn iconbtn--sm docpage__new" href="./chat.html" id="btn-new"
+       aria-label="新建对话" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"/></svg>
+    </a>
+
+    <!-- from=chat 让历史页知道该返回到哪（见 history.html 的 readFrom） -->
+    <a class="pill docpage__hist" href="./history.html?from=chat" aria-label="历史对话" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/>
+        <path d="M12 8v4.5l3 1.8"/></svg>
+    </a>
+
+    <!-- 设置入口：竖排三点，纯图标圆钮（与首页那颗同款）。
+         由 .docpage__bar 的 flex 排布，自然落在最右。 -->
+    <a class="pill docpage__setting" id="btn-setting"
+       href="./setting.html?from=chat" aria-label="设置">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/>
+      </svg>
+    </a>
+  </header>
+
+  <main class="docpage__flow" id="flow">
+
+    <!-- 空对话：用一张卡把「我是谁、能做什么、从哪开始」一次说清。
+         一旦有了第一条消息，这张卡让位给对话流（§4.2）。
+         「从哪开始」原来是一个「开始提问」按钮，现在换成提示词位 ——
+         按钮只说了「可以问」，提示词直接给出「可以问什么」，还省掉一次点击。 -->
+    <section class="herocard" id="welcome" aria-labelledby="welcome-title">
+      <div class="herocard__body">
+        <p class="herocard__hi">湖北社科数据信息联盟</p>
+        <!-- 主语与谓语分行。用 <br> 而不是把宽度写死 —— 标签是两段固定文案，
+             分行是内容结构而非断行结果，写死 width 会在字号档位变化时错位。 -->
+        <h2 class="herocard__title" id="welcome-title">
+          智库报告 / 学术论文 / 政策解读<br>都可以问我
+        </h2>
+
+      </div>
+      <div class="herocard__figure">
+        <img class="figure__img" data-avatar-img src="./h5v2/assets/avatars/avatar-01.png"
+             alt="数字人形象" width="120" height="120" loading="lazy" decoding="async">
+      </div>
+
+      <!-- 提示词位：单行、上下滚动换词，内容是脚本填的（PROMPTS）。
+           用 .herocard__wide 占满整卡宽度 —— 挤在 __body 里会被右侧形象
+           分走一半宽（375 视口下只剩 163px），一条完整的提示词放不下。 -->
+      <div class="herocard__wide prompts" id="prompts" role="group" aria-label="试试这样问">
+        <div class="prompts__track" id="prompt-track"></div>
+      </div>
+    </section>
+
+    <!-- 对话流：有消息后由脚本填充 -->
+    <div class="stack" id="thread"></div>
+
+  </main>
+
+  <!-- 底部：输入条 + AI 标识（合规必现）。
+       sticky 吸底，输入框聚焦时自动滚到键盘之上（base.css 的 scroll-margin-block）。 -->
+  <footer class="docpage__foot">
+
+    <!-- 输入条（DESIGN.md §5.1）：左钮切模式，右侧随模式换形态。
+         键盘态 = 输入框 + 发送钮；录音态 = 录音按钮。
+         原先只靠 enterkeyhint="send" 用系统键盘发送、不设发送钮；
+         发送钮补上后，生成中还能原地变成「停止」—— 系统键盘给不了这个能力。
+         回车 / 系统「发送」键仍然照常提交，两条路不冲突。 -->
+    <div class="composer" id="composer" data-mode="keyboard">
+      <!-- 左：模式切换。图标表「当前模式」，动作由 aria-label 说明 -->
+      <button class="iconbtn composer__mode" type="button" id="btn-mode" data-mode-toggle>
+        <svg class="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5.5" width="19" height="13" rx="2.6"/>
+          <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>
+        <svg class="i-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" aria-hidden="true">
+          <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+
+      <!-- 右 · 键盘态。发送钮放在输入框**内部**最右（不是外面并排）——
+           读作「这条输入的操作」，与左侧模式钮那个独立方块不是一类东西。
+           三态见 base.css 的 .composer__send：无 data-send = 置灰箭头不可点；
+           ready = 点亮；stop = 实心方块可停止。初始 disabled，由脚本切换。 -->
+      <div class="composer__field">
+        <label class="sr-only" for="composer-input">输入你的问题</label>
+        <input id="composer-input" type="text" inputmode="search" enterkeyhint="send"
+               autocomplete="off" placeholder="输入你的问题">
+        <button class="iconbtn composer__send" type="button" id="btn-send" disabled
+                aria-label="发送">
+          <svg class="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="2.4" fill="currentColor"/></svg>
+        </button>
+      </div>
+
+      <!-- 右 · 录音态 -->
+      <button class="composer__rec" type="button" id="btn-rec" data-rec="off" data-rec-btn
+              aria-pressed="false">点击开始录音</button>
+    </div>
+
+    <!-- AI 标识（合规必现，§4.2 / §5）。放在输入条下方而不是上方：
+         它是输入区的注脚（「你输入的内容会怎样被回答」），贴着输入条更好读；
+         夹在对话流与输入条之间会把它读成对话流的一部分。
+         base.css 的 .aiflag 已是 text-align:center，这里只需补下安全区的呼吸。 -->
+    <p class="aiflag docpage__aiflag">内容由 AI 生成，请注意甄别</p>
+  </footer>
+
+</div>
+
+<!-- 反馈条：与首页同一个组件、同一套位置（base.css 的 .toast 已统一走顶部）。
+     本页原先没有 toast，登录成功等「结果不可见」的提示需要它。 -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<!-- 扫码授权弹窗。真机微信里是跳授权页，演示站没有 AppID，
+     所以用首页同款占位二维码把「扫码 → 登录」这一步演出来。
+     点码 = 已扫码；Esc / 点遮罩 = 放弃，动作原样保留、不执行。 -->
+<dialog class="modal authq" id="auth-sheet" aria-labelledby="auth-sheet-title">
+  <!-- tabindex=-1 + autofocus：showModal 默认把焦点给第一个可聚焦元素（那颗二维码
+       按钮），会画出一圈焦点框，看着像「二维码已被选中」。让焦点落在标题上，
+       读屏仍能播报弹窗标题（同首页协议窗的口径）。 -->
+  <h2 id="auth-sheet-title" tabindex="-1" autofocus>微信扫码登录</h2>
+  <button class="authq__qr" type="button" aria-label="演示：已扫码，点击登录">
+    <img src="./assets/demo-qr.png" alt="" width="320" height="320" loading="lazy" decoding="async">
+  </button>
+</dialog>
+
+<script src="./js/auth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ======================================================================
+     对话页 · 空态优先
+     本轮只做「新建对话的空状态」：欢迎卡 + 输入条。
+     但两个入口（首页键盘钮、录音转写弹窗的发送）都会带 ?q= 过来，
+     所以也把「有 q 时作为首条消息发出去」这条路径做通，
+     否则用户确认过的文字会被丢掉。
+
+     真实模型调用不在本轮范围：AI 回答是演示数据，
+     走 .bubble--typing 短暂态再出答案，把「生成中」这一态也演示出来。
+     ====================================================================== */
+
+  /* 回答正文与「念出来的文本」分开：
+     正文是 HTML（含来源行与播报钮），TTS 只该念纯文字，
+     否则会把「来源：社科专家成果库」连同标点一起读进语音里。
+     两者放一起维护，避免改了一处忘了另一处。 */
+  var DEMO_ANSWER_TEXT = '已按「智库报告 / 学术论文 / 政策解读」分类梳理，共 47 条。';
+  var DEMO_ANSWER_SRC = '来源：社科专家成果库';
+
+  /* 播报钮：两态圆钮，图标表「按下去会得到什么」——
+     默认喇叭（点了开始播），播报中换停止方块（点了停下），与输入条发送钮同一套语义。 */
+  var SPEAK_ICO_PLAY =
+    '<svg class="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"'
+    + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M11 5.5 6.5 9.5H3.5v5h3L11 18.5z"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6"/>'
+    + '<path d="M18.2 6.5a7.6 7.6 0 0 1 0 11"/></svg>';
+
+  var TYPING_MS = 900;   /* 演示：生成中耗时 */
+
+  var flow = document.getElementById('flow');
+  var thread = document.getElementById('thread');
+  var welcome = document.getElementById('welcome');
+  var title = document.getElementById('conv-title');
+  var input = document.getElementById('composer-input');
+  var composer = document.getElementById('composer');
+  var modeBtn = document.getElementById('btn-mode');
+  var recBtn = document.getElementById('btn-rec');
+  var sendBtn = document.getElementById('btn-send');
+
+  /* ----------------------------------------------------------------------
+     数字人形象与首页保持同一个人
+     首页「切换形象」把序号写进 localStorage 的 skl.avatar，
+     这里读回来替换**欢迎卡**里的形象。
+     顶栏那个圆头像不在此列 —— 那是用户头像，与数字人无关（见顶栏注释）。
+     键名与下标顺序必须与首页 AVATARS 一致，改一边就要改另一边。
+     ---------------------------------------------------------------------- */
+  var AVATAR_KEY = 'skl.avatar';
+  /* 下标 0 是默认形象 —— 女性。顺序必须与首页 index.html 的 AVATARS 逐位一致：
+     首页把序号写进 localStorage，这里按同一个序号读回来。 */
+  var AVATAR_SRC = [
+    './h5v2/assets/avatars/avatar-01.png',   /* 0 · 女性，白衬衫（默认） */
+    './h5v2/assets/avatars/avatar-02.png'    /* 1 · 男性，蓝衬衫 */
+  ];
+
+  (function applySharedAvatar() {
+    var i;
+    try {
+      i = parseInt(localStorage.getItem(AVATAR_KEY), 10);
+    } catch (err) { i = 0; }
+    if (!(i >= 0 && i < AVATAR_SRC.length)) i = 0;
+    document.querySelectorAll('[data-avatar-img]').forEach(function (el) {
+      el.src = AVATAR_SRC[i];
+    });
+  })();
+
+  /* ----------------------------------------------------------------------
+     提示词位 —— 单行窗口，逐条滑出 / 滑入，像广告条那样上下翻
+     ----------------------------------------------------------------------
+     为什么不是「摊开三条」：这是在给用户递第一句话，一次只给一条，
+     看完一条心里就有个起手式；同时摊开三条反而要先挑，又变成选择题。
+
+     做法是最朴素的那种：窗口只露一行；每 N 秒把**当前那条往上滑出去**，
+     动画结束后移除它，同时**把下一条从下方滑进来**。轨道里始终只有两条，
+     不用拼接长轨、不用算环形下标、也不用担心接缝（那些方案的复杂度
+     在只有三条文案时完全不值）。
+
+     接真实推荐接口时替换 PROMPTS 一处即可，轮播逻辑不动。
+     ---------------------------------------------------------------------- */
+  /* 文案长度受这一栏的窄宽度约束（375 视口下约 195px），别再写长 ——
+     超出的部分会被省略号吃掉，而提示词被截断就失去了意义。 */
+  var PROMPTS = [
+    '长江经济带有哪些代表性研究成果？',
+    '湖北有哪些重点社科智库？',
+    '近五年湖北社科基金立项情况怎么样？'
+  ];
+  var PROMPT_MS = 3600;
+
+  var promptsWrap = document.getElementById('prompts');
+  var promptTrack = document.getElementById('prompt-track');
+  var promptIdx = 0;
+  var promptTimer = null;
+
+  function buildPrompts() {
+    if (!promptsWrap || !promptTrack || !PROMPTS.length) return;
+
+    /* 顺序不能反：必须先插进 DOM 再量高度。
+       游离元素的 offsetHeight 只算得上 padding，量出来是个 8px 的假高度，
+       窗口就会被压成一条线。 */
+    promptTrack.appendChild(makePrompt(PROMPTS[0], true));
+    syncPromptHeight();
+
+    /* 只在空态轮播。首条消息进来时欢迎卡整体移除，enterConversation 会清定时器。 */
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      /* 降低动态偏好：不自动翻，但那条仍然可点，用户照样能拿到一个起手式 */
+      return;
+    }
+    promptTimer = setInterval(advancePrompt, PROMPT_MS);
+  }
+
+  /* 气泡 + 问号：说明「这是一句可以问的话」。
+     不是装饰性图形 —— 它承载「这条是可提问的」这个信息（§11 禁止无意义图形）。
+     aria-hidden：右侧文字本身就是完整的问题，读屏不需要再听一个图标。 */
+  var PROMPT_ICO =
+    '<svg class="prompt__ico" viewBox="0 0 24 24" fill="none" stroke-width="1.9" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    /* 气泡：左右对称的圆角体 + 左下角小尾巴 */
+    '<path d="M20.5 11c0 4.2-3.8 7.6-8.5 7.6-.9 0-1.8-.1-2.6-.4L5.5 20.5l.6-3.2C4.7 16.1 3.5 13.7 3.5 11 3.5 6.8 7.3 3.4 12 3.4s8.5 3.4 8.5 7.6Z"/>' +
+    /* 问号 */
+    '<path d="M10.3 9.2a1.9 1.9 0 0 1 3.7.5c0 1.2-1.8 1.5-1.8 2.7"/>' +
+    '<path d="M12.2 15.2h.01"/></svg>';
+
+  function makePrompt(text, active) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'prompt';
+    if (active) b.setAttribute('data-active', 'true');
+
+    /* 图标与文字分两个节点：截断要落在文字上，否则省略号会盖住图标。
+       文字用 textContent 落字、不拼进 innerHTML —— 提示词将来可能来自接口。 */
+    b.innerHTML = PROMPT_ICO;
+    var txt = document.createElement('span');
+    txt.className = 'prompt__txt';
+    txt.textContent = text;
+    b.appendChild(txt);
+
+    /* 提示词写全，读屏直接念出「要问什么」，不需要「第 N 条」这类补语 */
+    b.addEventListener('click', function () { pickPrompt(text); });
+    return b;
+  }
+
+  /* 窗口高 = 一条的真实高度。量出来而不是在 CSS 里写死：
+     微信字体档位放大后一行会变高，写死会把字裁掉。
+     调用前那条必须在 DOM 里，否则量到的是假的。 */
+  function syncPromptHeight() {
+    var first = promptTrack.querySelector('.prompt');
+    if (!first) return;
+    var h = first.offsetHeight;
+    promptTrack.style.height = h + 'px';
+    promptsWrap.style.height = h + 'px';
+    return h;
+  }
+
+  /* 一次换档 = 旧的上滑走 + 新的从下滑来，两者同时进行。
+     方向恒定向下翻（内容往上走），不做来回 —— 反弹会让人以为界面在抖。 */
+  function advancePrompt() {
+    var cur = promptTrack.querySelector('.prompt[data-active="true"]') ||
+              promptTrack.firstElementChild;
+    if (!cur) return;
+
+    promptIdx = (promptIdx + 1) % PROMPTS.length;
+    var next = makePrompt(PROMPTS[promptIdx], false);
+
+    /* 入场位：先落在窗口下方，再过渡到 0 */
+    next.style.transition = 'none';
+    next.style.transform = 'translateY(100%)';
+    promptTrack.appendChild(next);
+    void next.offsetHeight;                    /* 强制回流，让起始位置生效 */
+
+    next.style.transition = '';
+    next.style.transform = 'translateY(0)';
+    cur.style.transform = 'translateY(-100%)';
+    cur.removeAttribute('data-active');
+    next.setAttribute('data-active', 'true');
+
+    /* 动画走完再清场，把轨道恢复成「只有一条」的干净状态 */
+    setTimeout(function () {
+      if (cur.parentNode) cur.parentNode.removeChild(cur);
+      next.style.transform = '';
+    }, 260);                                   /* 略大于 --dur-short(220ms) */
+  }
+
+  /* 点提示词：只填入输入框，不直接发送 —— 用户常常想改一两个字再问。
+     发出去就收不回来了，填进去还能改。光标给到末尾，接着打字即可。 */
+  function pickPrompt(text) {
+    /* 语音分支一并收干净：在途 recTimer 迟到（约 1.2s 后）会把刚填入的
+       提示词覆盖成识别文案（#30）。 */
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    rec = 'off';
+    if (mode !== 'keyboard') { mode = 'keyboard'; renderComposer(); }
+    input.value = text;
+    /* 脚本赋值**不触发** input 事件，发送钮的可用态就同步不过去 ——
+       点完提示词按钮还是灰的。这里手动刷一次（发送钮的唯一判据在 renderSend）。 */
+    renderSend();
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+  }
+
+  function el(tag, cls, html) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+
+  function scrollToEnd() {
+    /* 新消息进来后滚到底。用最后一屏高度对齐，避免顶栏被顶出视线 */
+    var last = thread.lastElementChild;
+    if (last) last.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }
+
+  /* 首条消息落地后，欢迎卡让位给对话流（§4.2）。
+     轮播定时器必须在这里停掉：卡片一移除，那三个 button 就成了游离节点，
+     定时器还在跑就是纯粹的浪费（而且会一直持着它们的引用不放）。 */
+  function enterConversation() {
+    if (promptTimer) { clearInterval(promptTimer); promptTimer = null; }
+    if (welcome) { welcome.remove(); welcome = null; }
+    flow.setAttribute('aria-label', '对话内容');
+    /* 「新建对话」到这一刻才有意义 —— 空对话里点它等于原地刷新 */
+    renderTopActions();
+  }
+
+  /* 顶栏标题：先按中轴算可用宽度，再按宽度截断补省略号。
+     两件事都必须在同一个函数里、按固定顺序做 ——
+     宽度变了要重新截，截出来的字变了宽度不该跟着变（否则互相触发）。
+     宽屏下 .docpage__title 写死了 width，所以「量宽度」不会因为换文本而失效。
+
+     可用宽度取两侧更宽的一侧做对称留白：
+     长的那侧决定中轴到该侧控件有多远，另一侧照抄这个距离，标题才是真居中。
+
+     ≤480 走另一条路：标题在流内、宽度由 flex 决定（详见样式块里的同名
+     媒体查询），这里直接返回 0 —— fitTitle 拿 0 会原样返回文本，
+     截断交给 CSS 的 text-overflow。 */
+  var barEl = document.querySelector('.docpage__bar');
+  var acctEl = document.getElementById('btn-account');
+  /* 右侧量的是这一组里**最左边那颗可见钮**的左沿 —— 量到它就等于把整组
+     宽度一起算进去了。
+     不能写死「新建」：空对话时它是 hidden，getBoundingClientRect 全为 0，
+     算出的右侧占位会变成整个视口宽，标题盒被压到 0 直接消失（实测回归）。 */
+  var rightEls = [
+    document.getElementById('btn-new'),
+    document.querySelector('.docpage__hist'),
+    document.getElementById('btn-setting')
+  ];
+
+  function measureTitleWidth() {
+    /* 未授权时标题与右侧两颗钮都是 hidden，量出来的 rect 全是 0，
+       会算出一个负数宽度。直接返回 0，交给 fitTitle 原样放行。 */
+    if (title.hidden) {
+      document.documentElement.style.removeProperty('--title-w');
+      return 0;
+    }
+    /* ≤480 时标题在流内、宽度由 flex 决定，这里返回 0 让 fitTitle 原样放行，
+       截断交给 CSS 的 text-overflow（流内可靠）。用 matchMedia 而不是量
+       getBoundingClientRect，是因为脚本要拿它当「要不要截」的判据，
+       而 --title-w 在窄屏已经被 width:auto 忽略，量了也没人用。 */
+    if (window.matchMedia && matchMedia('(max-width: 480px)').matches) {
+      document.documentElement.style.removeProperty('--title-w');
+      return 0;
+    }
+    var barR = barEl.getBoundingClientRect();
+    var cs = getComputedStyle(barEl);
+    /* 右侧取最左那颗「可见」钮的左沿；全隐藏时按 0 处理。
+       offsetParent 为 null 的隐藏元素 rect 全是 0，不能直接取最小值。 */
+    var rightEdge = barR.right;
+    for (var i = 0; i < rightEls.length; i++) {
+      if (!rightEls[i].hidden) {
+        rightEdge = Math.min(rightEdge, rightEls[i].getBoundingClientRect().left);
+      }
+    }
+    /* 两侧的「占位宽度」= 控件外沿到顶栏外沿的距离（含 padding 与 gap） */
+    var left = acctEl.getBoundingClientRect().right - barR.left;
+    var right = barR.right - rightEdge;
+    var gap = parseFloat(cs.gap) || 0;
+    /* 与标题至少隔一个 gap，否则字会贴上按钮 */
+    var w = barR.width - 2 * Math.max(left, right) - 2 * gap;
+    w = Math.max(0, Math.floor(w));
+    /* 宽度写在 :root 上而不是 title.style.width：
+       CSS 变量便于将来按视口再调，也让规则留在样式里。 */
+    document.documentElement.style.setProperty('--title-w', w + 'px');
+    return w;
+  }
+
+  function fitTitle(text) {
+    var avail = measureTitleWidth();
+    if (avail <= 0) return text;
+
+    var canvas = fitTitle.canvas || (fitTitle.canvas = document.createElement('canvas'));
+    var ctx = canvas.getContext('2d');
+    var cs = getComputedStyle(title);
+    ctx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+
+    var ELL = '…';
+    var w = function (s) { return ctx.measureText(s).width; };
+    if (w(text) <= avail) return text;
+
+    /* 二分而不是「总宽 ÷ 单字宽」：中英数混排时字符宽度不等。
+       量的是 shape 推进宽，实际渲染还有取整误差，留 1px 余量。 */
+    var lo = 0, hi = text.length;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (w(text.slice(0, mid) + ELL) <= avail - 1) lo = mid; else hi = mid - 1;
+    }
+    /* lo 为 0：连一个字加省略号都放不下（极窄屏），
+       宁可让 CSS 去裁，也不要交出一个光秃秃的「…」。 */
+    return lo > 0 ? text.slice(0, lo) + ELL : text;
+  }
+
+  function addUser(text) {
+    thread.appendChild(el('p', 'bubble bubble--user', ''));
+    thread.lastElementChild.textContent = text;
+    /* 会话标题取首条提问 —— 与历史列表口径一致，长度交给宽度决定 */
+    titleSrc = text;
+    title.textContent = fitTitle(text);
+  }
+
+  /* ----------------------------------------------------------------------
+     播报
+     单一在播的回复 + 一处卡片，两边的按钮是同一份状态的两个视图。
+     · 播报文本按回复存（bubble 的 dataset），点某条的钮就播某条；
+     · 「停止后能重播」——stopSpeaking 只收状态，不清文本，所以再点即重播；
+     · 「不打断」——发下一条消息不碰播放中的这条；旧播报自然念完转默认态。
+     ---------------------------------------------------------------------- */
+  var speaking = false;      /* 是否有播报在进行 */
+  var speakingBubble = null; /* 正在播的那条 AI 气泡 */
+  var speakTimer = null;     /* TTS 不可用时的兜底计时（按文字长度估时长） */
+  var currentUtter = null;   /* 当前 utterance：被 cancel 的旧条不准再收状态（见 #32） */
+
+  /* 播报模拟时长：按字数估，中文约每字 0.22s，两端各留一点起停余量。
+     仅在没有 speechSynthesis 时用（见 speak()）。 */
+  function estimateMs(text) { return Math.max(1200, text.length * 220); }
+
+  /* 播报态的**唯一**渲染出口：只有回复行里那枚钮随状态切。
+     回复动态生成，所以每次全量刷新 —— 避免某条漏复位留下一个
+     「按了没反应」的假播报态。 */
+  function renderSpeak() {
+    thread.querySelectorAll('.speakbtn[data-speak]').forEach(function (b) {
+      var on = speaking && b.closest('.bubble--ai') === speakingBubble;
+      b.toggleAttribute('data-speaking', on);
+      b.setAttribute('aria-label', on ? '停止播报' : '播报本条回复');
+    });
+  }
+
+  /* 开始播报某条 AI 气泡。text 为该条的纯文字（不含来源），由调用方给。 */
+  function startSpeaking(bubble, text) {
+    stopSpeaking();          /* 先收干净上一次，避免两套动效叠着 */
+    speaking = true;
+    speakingBubble = bubble;
+    renderSpeak();
+
+    if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; }
+
+    /* 真实 TTS：能用就用。微信内置浏览器对 speechSynthesis 支持不稳定，
+       所以永远同时挂一个兜底计时器 —— 有 TTS 时它到点只是收状态
+       （onend 会先一步清掉它），没 TTS 时它就是唯一的时间来源。
+       两条路都收敛到 stopSpeaking，不留分叉。 */
+    var tts = window.speechSynthesis;
+    if (tts && typeof SpeechSynthesisUtterance === 'function') {
+      try {
+        tts.cancel();
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN';
+        /* cancel() 的旧条仍会触发 onend/onerror；只有当前条允许收状态，
+           否则旧条会把刚开始的新播报误停（#32）。 */
+        u.onend = function () { if (u === currentUtter) stopSpeaking(); };
+        u.onerror = function () { if (u === currentUtter) stopSpeaking(); };
+        currentUtter = u;
+        tts.speak(u);
+      } catch (e) { /* 落到下面的兜底计时器 */ }
+    }
+
+    speakTimer = setTimeout(stopSpeaking, estimateMs(text) + 400);
+  }
+
+  function stopSpeaking() {
+    currentUtter = null;
+    if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; }
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+    /* 已经不在播就只做一次收尾，避免重复调用时把状态又翻一遍 */
+    if (!speaking) return;
+    speaking = false;
+    speakingBubble = null;
+    renderSpeak();
+  }
+
+  function toggleSpeaking(bubble, text) {
+    if (speaking && speakingBubble === bubble) stopSpeaking();
+    else startSpeaking(bubble, text);
+  }
+
+  /* 生成中的定时器要能被「停止」清掉，所以留在外面（原先是匿名 setTimeout） */
+  var aiTimer = null;
+
+  /* AI 气泡的正文与来源行：正文/来源用 textContent 落字（#33），
+     将来回答来自服务端也不会变成 XSS 汇聚点；只有固定图标走 innerHTML。
+     来源行里塞一个按钮，所以 .bubble__src 在本页被改成 flex（见页内样式）。 */
+  function fillAiBubble(bubble) {
+    var text = el('span', 'bubble__text');
+    text.textContent = DEMO_ANSWER_TEXT;
+    bubble.appendChild(text);
+
+    var src = el('span', 'bubble__src');
+    var srcText = el('span');
+    srcText.textContent = DEMO_ANSWER_SRC;
+    src.appendChild(srcText);
+    var btn = el('button', 'speakbtn', SPEAK_ICO_PLAY);
+    btn.type = 'button';
+    btn.setAttribute('data-speak', '');
+    btn.setAttribute('aria-label', '播报本条回复');
+    src.appendChild(btn);
+    bubble.appendChild(src);
+  }
+
+  function addAi() {
+    var typing = el('div', 'bubble bubble--ai bubble--typing',
+                    '<i></i><i></i><i></i>');
+    typing.setAttribute('aria-label', '正在生成回答');
+    thread.appendChild(typing);
+    scrollToEnd();
+
+    aiTimer = setTimeout(function () {
+      aiTimer = null;
+      if (typing) {
+        typing.classList.remove('bubble--typing');
+        typing.removeAttribute('aria-label');
+        fillAiBubble(typing);
+        /* 回复完成即自动播报本条 —— 但只在设置页开了「自动播报」时。
+           手动播报按钮不受影响（README 口径：只控自动那一下）。 */
+        if (window.Settings && Settings.isAutoSpeak()) {
+          startSpeaking(typing, DEMO_ANSWER_TEXT);
+        }
+      }
+      busy = false;
+      scrollToEnd();
+      renderSend();
+    }, TYPING_MS);
+  }
+
+  var busy = false;
+
+  /* 发送钮三态。状态的唯一出口 —— 输入、发送、生成结束、停止、
+     模式与登录态切换都调它，避免状态散在各处各自为政。
+     停止态优先于输入内容：生成中即使输入框有字，按钮也该是「停止」，
+     否则用户没法中断一个跑歪的回答。 */
+  function renderSend() {
+    var stop = busy;
+    var ready = !stop && input.value.trim() !== '';
+    var mode = composer.getAttribute('data-mode');
+    /* 录音态没有键盘发送的语义，整钮收起（同 .composer__field 的处理）。
+       hidden 写属性而不是 CSS 类：base.css 有 [hidden]{display:none!important}，
+       能盖住 .iconbtn 的 display:grid。 */
+    sendBtn.hidden = mode !== 'keyboard';
+    sendBtn.disabled = stop ? false : !ready;
+    if (stop) {
+      sendBtn.setAttribute('data-send', 'stop');
+      sendBtn.setAttribute('aria-label', '停止生成');
+    } else {
+      sendBtn.removeAttribute('data-send');
+      if (ready) sendBtn.setAttribute('data-send', 'ready');
+      sendBtn.setAttribute('aria-label', '发送');
+    }
+  }
+
+  /* 停止生成：清掉定时器，把「正在生成」的气泡就地转成一句中断说明。
+     不删气泡 —— 删除会让用户以为消息被撤销了；保留并说明才是「已停止」。
+     已停止生成的说明里没有播报钮（也确实没内容可播），所以不触发播报。 */
+  function stopAi() {
+    if (!aiTimer) return;
+    clearTimeout(aiTimer);
+    aiTimer = null;
+    busy = false;
+
+    var typing = thread.lastElementChild;
+    if (typing && typing.classList.contains('bubble--typing')) {
+      typing.classList.remove('bubble--typing');
+      typing.removeAttribute('aria-label');
+      typing.textContent = '已停止生成';
+    }
+    /* 生成被打断时若正好有别的回复在播，保留 —— 用户要的是「不打断」 */
+    renderSend();
+  }
+
+  /* 发送不校验登录：本页是演示用的普通对话模式，从首页点进来即视为可用。
+     （原先是 Auth.require 包一层，未登录先弹手机号登录层。） */
+  function send(text) {
+    text = (text || '').trim();
+    if (!text || busy) return;
+    doSend(text);
+  }
+
+  function doSend(text) {
+    busy = true;
+
+    if (welcome) enterConversation();
+    addUser(text);
+    input.value = '';
+    scrollToEnd();
+    addAi();
+    renderSend();
+  }
+
+  /* ---- 输入条 · 键盘态 ---- */
+  input.addEventListener('keydown', function (e) {
+    /* 系统键盘的「发送」键与回车都走这里。
+       排除输入法组合态：中文输入法按 Enter 是「上屏候选词」，不是发送，
+       否则半成品文本会被提前发出去（#29）。 */
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      /* 与发送钮同一条路，同样过扫码门禁（gate 是函数声明，提升到此处可用） */
+      gate(function () { send(input.value); });
+    }
+  });
+
+  /* 输入内容变化即时反映到发送钮的可用态。
+     用 input 事件而不是 keydown：粘贴、输入法上屏、清空都覆盖得到。 */
+  input.addEventListener('input', renderSend);
+
+  /* 发送钮一个钮两种职责：生成中点击 = 停止，否则 = 发送。
+     由 busy 分流，与 renderSend 的判据同源。
+     发送要走扫码门禁；「停止」是收尾动作，不拦。 */
+  sendBtn.addEventListener('click', function () {
+    if (busy) stopAi();
+    else gate(function () { send(input.value); });
+  });
+
+  /* ---- 播报 · 两处按钮 ----
+     事件委托到对话流：回复是脚本动态生成的，逐条绑监听会在每次 addAi
+     之后多一批要维护的引用。委托只需绑一次，且天然覆盖将来新增的回复。 */
+  thread.addEventListener('click', function (e) {
+    var btn = e.target.closest('.speakbtn[data-speak]');
+    if (!btn) return;
+    var bubble = btn.closest('.bubble--ai');
+    if (!bubble) return;
+    /* 播报文本取该条正文节点，不带来源行 —— 来源是标注，不该念出来 */
+    var textEl = bubble.querySelector('.bubble__text');
+    toggleSpeaking(bubble, textEl ? textEl.textContent : bubble.textContent);
+  });
+
+  /* ----------------------------------------------------------------------
+     输入条 · 两态三步骤（DESIGN.md §5.1）
+     键盘态 ─点左─▶ 录音待开始 ─点右─▶ 录音中 ─点右─▶ 识别中 ─▶ 键盘态
+     录音是纯模拟，不调用麦克风、不申请权限 —— 演示站要任何机器都能演。
+     接真实 ASR 时替换 RECOGNIZED 与 RECOGNIZE_MS 两处即可，状态机不动。
+     ---------------------------------------------------------------------- */
+  var RECOGNIZED = '长江经济带的区域协调发展，有哪些代表性研究成果？';
+  var RECOGNIZE_MS = 1200;
+
+  var mode = 'keyboard';
+  var rec = 'off';
+  var recTimer = null;
+
+  function renderComposer() {
+    composer.setAttribute('data-mode', mode);
+    /* 图标表模式，动作由 aria-label 说清 —— 否则读屏用户听到「键盘按钮」
+       会以为按下去就是在打字（§10）。 */
+    modeBtn.setAttribute('aria-label', mode === 'voice' ? '切换到键盘输入' : '切换到语音录入');
+
+    recBtn.textContent = rec === 'busy' ? '正在识别…'
+                       : rec === 'on'   ? '点击结束录音'
+                       :                  '点击开始录音';
+    recBtn.setAttribute('data-rec', rec === 'on' ? 'on' : 'off');
+    recBtn.setAttribute('aria-pressed', String(rec === 'on'));
+    recBtn.disabled = (rec === 'busy');
+    if (rec === 'busy') recBtn.setAttribute('aria-busy', 'true');
+    else recBtn.removeAttribute('aria-busy');
+
+    /* 发送钮跟着模式显隐（录音态收起）。放这里而不是各按钮自己管 ——
+       renderComposer 是所有输入条状态的唯一入口。 */
+    renderSend();
+    /* 切到录音态时停止播报：接下来要录用户说话，两路声音会打架。
+       切回键盘态不重启 —— 「不打断」指的是发新消息，不是切输入方式。 */
+    if (mode === 'voice') stopSpeaking();
+  }
+
+  /* 左：切模式。切走时把在途的识别定时器清掉、录音态收干净 ——
+     否则迟到的识别结果会写进已经切走的输入框。
+
+     不做登录校验：本页的身份在加载时已确定（微信授权 / 手机号登录）。
+     校验前移后各操作点不再重复拦，登录一处的规则只写一次。 */
+  modeBtn.addEventListener('click', function () {
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    rec = 'off';
+    mode = (mode === 'voice') ? 'keyboard' : 'voice';
+    renderComposer();
+    /* 回键盘态把光标送回输入框：已输入的文字不丢，可接着改 */
+    if (mode === 'keyboard') input.focus();
+  });
+
+  /* 右：录音开关。点一下录，再点一下结束 → 识别中 → 转文字填入输入框。
+     「开始录音」要过扫码门禁 —— 录音要身份；「结束录音」是收尾，不拦
+     （否则录到一半登录态丢了就停不下来）。 */
+  recBtn.addEventListener('click', function () {
+    if (rec === 'busy') return;
+
+    if (rec === 'off') {
+      gate(function () {
+        rec = 'on';
+        renderComposer();
+      });
+      return;
+    }
+
+    /* 结束录音 → 识别中 */
+    rec = 'busy';
+    renderComposer();
+
+    recTimer = setTimeout(function () {
+      recTimer = null;
+      /* 转成文字填入输入框（不直接发送 —— 识别有误差，交给用户确认修改），
+         自动回键盘态。演示站填固定文案，接真实 ASR 时替换这一行。 */
+      input.value = RECOGNIZED;
+      mode = 'keyboard';
+      rec = 'off';
+      /* renderComposer 会调 renderSend，输入文字已经写进去了，发送钮会一起刷亮 */
+      renderComposer();
+      input.focus();
+      /* 光标置于末尾，方便直接改 */
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, RECOGNIZE_MS);
+  });
+
+  renderComposer();
+
+  /* 提示词位。放在 renderComposer 之后：pickPrompt 在切模式时要调它。
+     带 ?q= 进来时首条消息会立刻让欢迎卡让位，enterConversation 会清掉定时器。 */
+  buildPrompts();
+
+  /* ---- 登录态 ---- */
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.hidden = true; }, 2000);
+  }
+  Auth.onToast(toast);
+
+  /* ---- 扫码授权门禁 ----
+     发送 / 开始录音走这里弹窗；新建 / 历史 / 会话标题改用显隐承担
+     （见 renderTopActions）—— 未授权时它们根本不出现，不需要点了再拦。
+     微信内加载时 Auth.boot() 已落登录态，所以真机不会看到这个窗；
+     非微信端（演示主场景）未授权时弹首页同款占位二维码，
+     点码 = 已扫码 → 授权成功 → 自动继续刚才那个动作。
+     取消 / Esc：只关窗，动作不执行，输入内容与录音态都原样保留。 */
+  var authSheet = document.getElementById('auth-sheet');
+  var pendingAction = null;
+
+  function closeAuthSheet() {
+    pendingAction = null;
+    if (typeof authSheet.close === 'function') authSheet.close();
+    else authSheet.removeAttribute('open');
+  }
+
+  /* 已授权就直接做；没授权先扫码，成功后补做。action 必须无参、
+     且在用户扫码后仍然有效（这里都是读当前输入框 / 切当前状态的闭包）。
+     窗已经开着（进页面时自动弹的那次）就只登记动作，不再 showModal ——
+     对已打开的 dialog 再调 showModal 会抛 InvalidStateError。 */
+  function gate(action) {
+    if (Auth.get()) { if (action) action(); return; }
+    pendingAction = action;
+    if (authSheet.open) return;
+    if (typeof authSheet.showModal === 'function') authSheet.showModal();
+    else authSheet.setAttribute('open', '');
+  }
+
+  authSheet.addEventListener('cancel', closeAuthSheet);   /* Esc 不经过按钮 */
+  document.querySelector('.authq__qr').addEventListener('click', function () {
+    Auth.boot(true);          /* 传 true：用户点了码＝显式授权，非微信也要落登录态 */
+    var next = pendingAction;
+    closeAuthSheet();
+    renderTopActions();
+    if (next) next();
+  });
+
+  /* ---- 顶栏授权态 ----
+     三样各有各的前置条件：
+       会话标题 / 历史 —— 只要已授权就显示（历史是账号数据）。
+       新建对话       —— 已授权 **且** 已经形成了对话。空对话里点它只是原地
+                         刷新，没有可新建的东西，所以等首条消息落地再出现。
+     用 hidden 属性而不是 CSS 类：base.css 的 [hidden] 带 !important，
+     能压住 .iconbtn 的 display:grid 与 .pill 的 inline-flex。
+
+     「是否已形成对话」看的是欢迎卡还在不在：enterConversation() 会把它移除，
+     且只在首条消息进来时调用 —— 比另设一个布尔量少一处状态要维护。 */
+  var newBtn = document.getElementById('btn-new');
+  var histBtn = document.querySelector('.docpage__hist');
+
+  function renderTopActions() {
+    var authed = !!Auth.get();
+    var inChat = !welcome;           /* 欢迎卡已移除 = 已经有对话了 */
+    newBtn.hidden = !(authed && inChat);
+    histBtn.hidden = !authed;
+    title.hidden = !authed;
+    /* 隐藏元素量出来是 0，显隐一变就得重算标题盒宽度。
+       函数声明与 barEl/rightEls 都是 var/function 提升，此处调用安全。 */
+    if (authed) measureTitleWidth();
+  }
+
+  /* 环境分流 + 加载时授权。
+     微信端：发起授权；非微信端：什么都不做，登录层等用户首次触发动作时再弹。
+     注意这里**不**给 chat 页打 .is-wx —— 那个类只管首页底部动作区的切换。 */
+  if (Auth.isWeChat()) Auth.boot();
+
+  /* 顶栏左钮 = 切回数字人对话模式。纯导航，不需要登录 ——
+     首页本身在未授权时也能看，切回去再由它自己的授权流程接管。
+     原来这里是「我的账户」入口并带登录拦截，改成模式切换后那套判据一并去掉。 */
+
+  /* ---- 顶栏动作：新建对话 / 历史（设置是 <a href>，不需要脚本）----
+     两个按钮的授权判据改由「显隐」承担：未授权时它们根本不出现，
+     所以点击里不再走扫码门禁，直接跳转。
+
+     「新建」的状态全在内存里（刷新即重置，没有可清的服务端数据），
+     所以它就是跳到不带参数的 chat.html。
+     用 location.replace 不留历史记录：否则从已有多轮的会话点「新建」，
+     按返回会回到刚才那页，看着像新建失败。 */
+  document.getElementById('btn-new').addEventListener('click', function (e) {
+    e.preventDefault();
+    location.replace('./chat.html');
+  });
+
+  /* 历史是 <a href>：地址由元素自身给出，放行默认导航
+     （授权判据已由显隐承担，见下面的 renderTopActions）。 */
+
+  /* 转屏 / 拉窗口后顶栏可用宽度变了，标题要按新宽度重算。
+     存原始问句、重算时再截 —— 不能拿已经截过的字符串回炉。
+     用 rAF 合帧：resize 一次能连发几十个事件，量一次就够了。 */
+  var titleSrc = '';
+  var fitPending = 0;
+  window.addEventListener('resize', function () {
+    if (fitPending) return;
+    fitPending = requestAnimationFrame(function () {
+      fitPending = 0;
+      if (titleSrc) title.textContent = fitTitle(titleSrc);
+      else measureTitleWidth();   /* 空对话也要跟上，免得标题盒宽度过期 */
+    });
+  });
+
+  /* 先按登录态决定顶栏显隐，再量标题宽度 —— 顺序反了会按「按钮都在」
+     的顶栏量一次，解锁后标题仍是旧宽度。 */
+  renderTopActions();
+
+  /* 空对话也要先把标题盒宽度量出来，否则「新对话」会挤在 0 宽里 */
+  measureTitleWidth();
+
+  /* ---- 进页面即要求授权 ----
+     未授权直接弹扫码窗（微信内已被 boot 授权，看不到这一步）。
+     放在 q 处理之前：带 ?q= 进来时 gate 会登记「扫码后发这条」，
+     而不是再 showModal 一次。 */
+  if (!Auth.get()) gate(null);
+
+  /* ---- 入口：有首条提问就发出去；没有则是新建空对话 ----
+     文本有两个来源，sessionStorage 优先：
+     首页跳过来时把文本写进了 skl.pendingQ，因为 ?q= 会被中间层改掉
+     （干净 URL 的 301 会丢整条 query，微信 WebView 也可能重写 URL）。
+     直接粘贴带参链接、或脚本在首页没跑起来时，回退到 ?q=。
+     读完立刻删——它是「待发的一条」，不是历史记录，留着会让下次进来重发。 */
+  var q = '';
+  try {
+    q = (sessionStorage.getItem('skl.pendingQ') || '').trim();
+    sessionStorage.removeItem('skl.pendingQ');
+  } catch (err) { /* 无痕模式等，忽略 */ }
+  if (!q) {
+    try { q = (new URLSearchParams(location.search).get('q') || '').trim(); } catch (err2) { q = ''; }
+  }
+
+  /* 带 q 进来也是一次「发送」，同样过门禁。
+     首页只会在已授权后才跳过来，所以正常演示看不到这个弹窗；
+     直接粘 URL 进来的情况才走这里。 */
+  if (q) {
+    gate(function () { send(q); });
+  }
+  /* 不带 q 则是新建空对话：标题「新对话」，不预置任何消息 */
+})();
+</script>
+</body>
+</html>
