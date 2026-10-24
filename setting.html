@@ -209,8 +209,12 @@ body { background: var(--grad-hero); }
 .proto__ext { flex: 0 0 auto; width: 18px; height: 18px; color: var(--ink-3); }
 
 /* ---- 退出登录 ---- */
-/* 只在已授权时出现（脚本按登录态切 hidden）。 */
-.logout { margin-top: var(--sp-xl); }
+/* 只在已授权时出现（脚本按登录态切 hidden）。
+   文字走危险色：.btn--ghost 基类是品牌紫，退出是破坏性动作，该用红。 */
+.logout {
+  margin-top: var(--sp-xl);
+  color: var(--danger);
+}
 
 /* ---- 扫码授权弹窗（与首页 / 对话页同一套形态与素材）---- */
 dialog.modal.authq {
